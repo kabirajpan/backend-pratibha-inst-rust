@@ -614,3 +614,51 @@ pub async fn delete_user(
         message: "User deleted".to_string(),
     }))
 }
+
+pub async fn get_audit_logs(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Query(q): Query<GetAuditLogsQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    auth_user.authorize(&[UserRole::Admin])?;
+
+    let page = q.page.unwrap_or(1).max(1);
+    let limit = q.limit.unwrap_or(100).max(1);
+    let offset = (page - 1) * limit;
+
+    let mut sql = "SELECT id, user_name, role, action, module, details, timestamp FROM audit_logs WHERE 1=1".to_string();
+    let mut binders: Vec<String> = Vec::new();
+    let mut idx = 1usize;
+
+    if let Some(ref m) = q.module {
+        if m != "all" && !m.is_empty() {
+            sql.push_str(&format!(" AND module = ${idx}"));
+            binders.push(m.clone());
+            idx += 1;
+        }
+    }
+
+    if let Some(ref s) = q.search {
+        if !s.is_empty() {
+            let term = format!("%{}%", s);
+            sql.push_str(&format!(" AND (details ILIKE ${idx} OR user_name ILIKE ${idx} OR action ILIKE ${idx})"));
+            binders.push(term);
+            idx += 1;
+        }
+    }
+
+    sql.push_str(&format!(" ORDER BY timestamp DESC LIMIT ${idx} OFFSET ${}", idx + 1));
+
+    let mut query = sqlx::query_as::<_, AuditLogItem>(&sql);
+    for b in binders {
+        query = query.bind(b);
+    }
+    query = query.bind(limit).bind(offset);
+
+    let logs = query.fetch_all(&state.db).await?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: logs,
+    }))
+}

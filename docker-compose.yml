@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pratibha_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pratibha_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pratibha_pass_secure}
+      POSTGRES_DB: ${POSTGRES_DB:-pratibha_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pratibha_user} -d ${POSTGRES_DB:-pratibha_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pratibha_backend_rust
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://pratibha_user:pratibha_pass_secure@postgres:5432/pratibha_db?sslmode=disable}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-kz74koWXHtqdoBIrjZxS35O+naNB1j+7AnHcMCFXwYAYSLos66VEzskWk+2TfI6Tub/sGn9ME/mAZl/C7ER9OQ==}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-+7Tp48vlDSU342seA3L/lG+JM+aq8oUydmypVItOSwH8WN3yr9MwXnN09Lz/yDlc56JfWVEUHTEfQ91550F4xg==}
+      JWT_ACCESS_EXPIRY: 2h
+      JWT_REFRESH_EXPIRY: 7d
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local

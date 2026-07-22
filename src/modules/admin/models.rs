@@ -195,3 +195,22 @@ pub struct CreateStudentResponse {
     #[serde(rename = "defaultPassword", skip_serializing_if = "Option::is_none")]
     pub default_password: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AuditLogItem {
+    pub id: Uuid,
+    pub user_name: String,
+    pub role: String,
+    pub action: String,
+    pub module: String,
+    pub details: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetAuditLogsQuery {
+    pub module: Option<String>,
+    pub search: Option<String>,
+    pub limit: Option<i64>,
+    pub page: Option<i64>,
+}
