@@ -1,7 +1,7 @@
 # ==========================================
-# STAGE 1: Build binary using official Rust image
+# STAGE 1: Build binary using latest official Rust image
 # ==========================================
-FROM rust:1.80-slim-bookworm AS builder
+FROM rust:latest AS builder
 
 WORKDIR /usr/src/app
 
