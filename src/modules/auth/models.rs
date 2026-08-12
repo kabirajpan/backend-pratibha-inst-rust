@@ -19,6 +19,7 @@ pub enum UserSubRole {
     HrManager,
     FinanceManager,
     TransportManager,
+    HostelManager,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

@@ -99,7 +99,7 @@ pub async fn create_vehicle(
     auth_user: AuthUser,
     Json(payload): Json<AddVehiclePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
     payload.validate()?;
 
     let reg_no_up = payload.reg_no.to_uppercase();
@@ -146,7 +146,7 @@ pub async fn edit_vehicle(
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateVehiclePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
     payload.validate()?;
 
     // Fetch existing
@@ -206,7 +206,7 @@ pub async fn remove_vehicle(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
 
     let deleted = sqlx::query_as::<_, Vehicle>(
         r#"
@@ -332,7 +332,7 @@ pub async fn create_expense(
     auth_user: AuthUser,
     Json(payload): Json<AddExpensePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
     payload.validate()?;
 
     let vehicle_no_up = payload.vehicle_no.to_uppercase();
@@ -413,7 +413,7 @@ pub async fn edit_expense(
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateExpensePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
     payload.validate()?;
 
     // Fetch existing
@@ -483,7 +483,7 @@ pub async fn remove_expense(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
 
     let deleted = sqlx::query_as::<_, TransportExpense>(
         r#"
@@ -514,10 +514,10 @@ pub async fn get_transport_students(
 
     let mut sql = r#"
         SELECT ts.id, ts.student_id, ts.vehicle_no, ts.route, ts.pickup_point, ts.fee_amount::float8 AS fee_amount, ts.status, ts.remarks, ts.created_at, ts.updated_at,
-               s.name AS student_name, s.class_name AS class,
+               COALESCE(s.name, ts.student_id) AS student_name, COALESCE(s.class_name, '—') AS class,
                COUNT(*) OVER()::int AS total_count
         FROM transport_students ts
-        JOIN students s ON s.student_id = ts.student_id
+        LEFT JOIN students s ON LOWER(TRIM(s.student_id)) = LOWER(TRIM(ts.student_id))
         WHERE 1=1
     "#
     .to_string();
@@ -526,8 +526,8 @@ pub async fn get_transport_students(
     let mut idx = 1usize;
 
     if let Some(ref search) = q.search {
-        let term = format!("%{}%", search);
-        sql.push_str(&format!(" AND (s.name ILIKE ${idx} OR ts.student_id ILIKE ${idx} OR ts.pickup_point ILIKE ${idx})"));
+        let term = format!("%{}%", search.trim());
+        sql.push_str(&format!(" AND (COALESCE(s.name, '') ILIKE ${idx} OR ts.student_id ILIKE ${idx} OR COALESCE(ts.pickup_point, '') ILIKE ${idx} OR COALESCE(ts.route, '') ILIKE ${idx} OR COALESCE(ts.vehicle_no, '') ILIKE ${idx})"));
         binders.push(term);
         idx += 1;
     }
@@ -550,7 +550,7 @@ pub async fn get_transport_students(
 
     if let Some(ref class_name) = q.class_name {
         if class_name != "All Classes" {
-            sql.push_str(&format!(" AND s.class_name = ${idx}"));
+            sql.push_str(&format!(" AND COALESCE(s.class_name, '') = ${idx}"));
             binders.push(class_name.clone());
             idx += 1;
         }
@@ -564,7 +564,7 @@ pub async fn get_transport_students(
         }
     }
 
-    sql.push_str(" ORDER BY s.name ASC");
+    sql.push_str(" ORDER BY COALESCE(s.name, ts.student_id) ASC");
     sql.push_str(&format!(" LIMIT ${idx} OFFSET ${}", idx + 1));
 
     let mut db_query = sqlx::query_as::<_, TransportStudentWithDetails>(&sql);
@@ -593,15 +593,15 @@ pub async fn get_transport_student(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
 
     let student = sqlx::query_as::<_, TransportStudentWithDetails>(
         r#"
         SELECT ts.id, ts.student_id, ts.vehicle_no, ts.route, ts.pickup_point, ts.fee_amount::float8 AS fee_amount, ts.status, ts.remarks, ts.created_at, ts.updated_at,
-               s.name AS student_name, s.class_name AS class,
+               COALESCE(s.name, ts.student_id) AS student_name, COALESCE(s.class_name, '—') AS class,
                1::int AS total_count
         FROM transport_students ts
-        JOIN students s ON s.student_id = ts.student_id
+        LEFT JOIN students s ON LOWER(TRIM(s.student_id)) = LOWER(TRIM(ts.student_id))
         WHERE ts.id = $1
         "#
     )
@@ -618,41 +618,39 @@ pub async fn create_transport_student(
     auth_user: AuthUser,
     Json(payload): Json<AddTransportStudentPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
     payload.validate()?;
 
     // 1. Verify student exists in master student registry
-    let student = sqlx::query("SELECT id FROM students WHERE student_id = $1")
+    let student = sqlx::query_as::<_, (String,)>("SELECT student_id FROM students WHERE LOWER(TRIM(student_id)) = LOWER(TRIM($1))")
         .bind(&payload.student_id)
         .fetch_optional(&state.db)
         .await?;
 
-    if student.is_none() {
-        return Err(AppError::NotFound(format!("Student {} is not registered in the system", payload.student_id)));
-    }
-
-    // 2. Check if student already has a mapping record
-    let existing = sqlx::query("SELECT id FROM transport_students WHERE student_id = $1")
-        .bind(&payload.student_id)
-        .fetch_optional(&state.db)
-        .await?;
-
-    if existing.is_some() {
-        return Err(AppError::Conflict(format!("Student {} is already mapped to transport", payload.student_id)));
-    }
+    let student_id = match student {
+        Some((sid,)) => sid,
+        None => payload.student_id.trim().to_string(),
+    };
 
     let mut vehicle_no_up = payload.vehicle_no.clone();
 
-    // 3. Verify vehicle if provided
+    // 2. Verify or auto-register vehicle if provided
     if let Some(ref vehicle_no) = payload.vehicle_no {
-        if !vehicle_no.is_empty() {
-            let v_up = vehicle_no.to_uppercase();
-            let vehicle = sqlx::query("SELECT id FROM vehicles WHERE reg_no = $1")
+        if !vehicle_no.trim().is_empty() {
+            let v_up = vehicle_no.trim().to_uppercase();
+            let vehicle = sqlx::query("SELECT id FROM vehicles WHERE UPPER(reg_no) = $1")
                 .bind(&v_up)
                 .fetch_optional(&state.db)
                 .await?;
             if vehicle.is_none() {
-                return Err(AppError::NotFound(format!("Vehicle {} is not registered", v_up)));
+                let _ = sqlx::query(
+                    "INSERT INTO vehicles (reg_no, type, capacity, driver_name, driver_phone, status, fitness_expiry, insurance_expiry, puc_expiry)
+                     VALUES ($1, 'Bus', 40, '—', '—', 'active', now() + interval '1 year', now() + interval '1 year', now() + interval '1 year')
+                     ON CONFLICT (reg_no) DO NOTHING"
+                )
+                .bind(&v_up)
+                .execute(&state.db)
+                .await;
             }
             vehicle_no_up = Some(v_up);
         }
@@ -662,14 +660,23 @@ pub async fn create_transport_student(
     let status = payload.status.as_deref().unwrap_or("active");
     let remarks = payload.remarks.as_deref().unwrap_or("—");
 
+    // 3. Insert or update existing transport student mapping
     let record = sqlx::query_as::<_, TransportStudent>(
         r#"
         INSERT INTO transport_students (student_id, vehicle_no, route, pickup_point, fee_amount, status, remarks)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (student_id) DO UPDATE
+        SET vehicle_no = EXCLUDED.vehicle_no,
+            route = EXCLUDED.route,
+            pickup_point = EXCLUDED.pickup_point,
+            fee_amount = EXCLUDED.fee_amount,
+            status = EXCLUDED.status,
+            remarks = EXCLUDED.remarks,
+            updated_at = now()
         RETURNING id, student_id, vehicle_no, route, pickup_point, fee_amount::float8 AS fee_amount, status, remarks, created_at, updated_at
         "#
     )
-    .bind(&payload.student_id)
+    .bind(&student_id)
     .bind(vehicle_no_up)
     .bind(&payload.route)
     .bind(&payload.pickup_point)
@@ -688,7 +695,7 @@ pub async fn edit_transport_student(
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateTransportStudentPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
     payload.validate()?;
 
     // Fetch existing
@@ -749,7 +756,7 @@ pub async fn remove_transport_student(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
 
     let deleted = sqlx::query_as::<_, TransportStudent>(
         r#"
@@ -770,7 +777,7 @@ pub async fn import_transport_students(
     auth_user: AuthUser,
     Json(payload): Json<Vec<ImportTransportStudentRow>>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
 
     let mut results = Vec::new();
 

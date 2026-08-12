@@ -22,7 +22,7 @@ pub async fn get_fee_records(
     Path(fee_type): Path<String>,
     Query(q): Query<GetFeesQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
 
     let page = q.page.unwrap_or(1).max(1);
     let limit = q.limit.unwrap_or(50).max(1);
@@ -261,7 +261,7 @@ pub async fn get_fee_record(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
 
     // Check if ID is in book_issues (library fines unpaid/legacy)
     let lib_issue = sqlx::query_as::<_, LibraryUnionRecord>(
@@ -310,7 +310,7 @@ pub async fn create_fee_record(
     Path(fee_type): Path<String>,
     Json(payload): Json<AddFeeRecordPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
     payload.validate()?;
 
     if fee_type == "library" {
@@ -392,7 +392,7 @@ pub async fn edit_fee_record(
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateFeeRecordPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
     payload.validate()?;
 
     // Check if updating library fine issue
@@ -500,7 +500,7 @@ pub async fn remove_fee_record(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
 
     // Check if library fine book issue
     let book_issue = sqlx::query("SELECT id FROM book_issues WHERE id = $1")
@@ -575,7 +575,7 @@ pub async fn get_expenses(
     auth_user: AuthUser,
     Query(q): Query<GetExpensesQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
 
     let page = q.page.unwrap_or(1).max(1);
     let limit = q.limit.unwrap_or(50).max(1);
@@ -649,7 +649,7 @@ pub async fn get_expense(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
 
     let expense = sqlx::query_as::<_, GeneralExpense>("SELECT id, ref_no, description, amount::float8 AS amount, category, date, payment_mode, remarks, utr, receipt, party_name, spent_by, voucher_no, created_at FROM expenses WHERE id = $1")
         .bind(id)
@@ -665,7 +665,7 @@ pub async fn create_expense(
     auth_user: AuthUser,
     Json(payload): Json<AddExpensePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
     payload.validate()?;
 
     let now_str = chrono::Utc::now().naive_utc().date();
@@ -715,7 +715,7 @@ pub async fn edit_expense(
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateExpensePayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
     payload.validate()?;
 
     // Fetch existing
@@ -773,7 +773,7 @@ pub async fn remove_expense(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager])?;
+    auth_user.authorize_sub_role(&[UserSubRole::FinanceManager, UserSubRole::TransportManager, UserSubRole::HostelManager, UserSubRole::LibraryManager])?;
 
     let deleted = sqlx::query_as::<_, GeneralExpense>("DELETE FROM expenses WHERE id = $1 RETURNING id, ref_no, description, amount::float8 AS amount, category, date, payment_mode, remarks, utr, receipt, party_name, spent_by, voucher_no, created_at")
         .bind(id)
