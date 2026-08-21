@@ -63,6 +63,22 @@ pub async fn register(
     .fetch_one(&state.db)
     .await?;
 
+    if role != UserRole::Student {
+        let role_title = payload.sub_role.as_ref().map(|sr| format!("{:?}", sr)).unwrap_or_else(|| format!("{:?}", role));
+        let html = crate::modules::email::service::build_staff_welcome_html(
+            &payload.name,
+            &role_title,
+            &payload.email,
+            &payload.password
+        );
+        crate::modules::email::service::send_email_async(
+            state.config.clone(),
+            payload.email.clone(),
+            format!("Staff Onboarding - Pratibha ERP ({})", role_title),
+            html
+        );
+    }
+
     let response_data = UserResponse::from(user);
 
     Ok((

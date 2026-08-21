@@ -205,6 +205,21 @@ pub async fn create_student(
             .bind(&password_hash)
             .execute(&state.db)
             .await?;
+
+            let pwd = default_password.as_deref().unwrap_or("—");
+            let html = crate::modules::email::service::build_student_welcome_html(
+                &student.name,
+                &student.student_id,
+                email,
+                pwd,
+                student.class_name.as_deref().unwrap_or("N/A")
+            );
+            crate::modules::email::service::send_email_async(
+                state.config.clone(),
+                email.clone(),
+                format!("Welcome to Pratibha Institute - Student Credentials ({})", student.student_id),
+                html
+            );
         }
     }
 

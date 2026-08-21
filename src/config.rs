@@ -10,6 +10,12 @@ pub struct Config {
     pub jwt_refresh_expiry: String,
     pub client_origin: String,
     pub node_env: String,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_username: String,
+    pub smtp_password: String,
+    pub smtp_from_email: String,
+    pub smtp_from_name: String,
 }
 
 impl Config {
@@ -42,6 +48,26 @@ impl Config {
         let node_env = env::var("NODE_ENV")
             .unwrap_or_else(|_| "development".to_string());
 
+        let smtp_host = env::var("SMTP_HOST")
+            .unwrap_or_else(|_| "smtp.gmail.com".to_string());
+
+        let smtp_port = env::var("SMTP_PORT")
+            .unwrap_or_else(|_| "587".to_string())
+            .parse::<u16>()
+            .unwrap_or(587);
+
+        let smtp_username = env::var("SMTP_USERNAME")
+            .unwrap_or_else(|_| "pratibha01portal@gmail.com".to_string());
+
+        let smtp_password = env::var("SMTP_PASSWORD")
+            .unwrap_or_else(|_| "pyxuefummpjnqzax".to_string());
+
+        let smtp_from_email = env::var("SMTP_FROM_EMAIL")
+            .unwrap_or_else(|_| "pratibha01portal@gmail.com".to_string());
+
+        let smtp_from_name = env::var("SMTP_FROM_NAME")
+            .unwrap_or_else(|_| "Pratibha Institute ERP".to_string());
+
         Config {
             port,
             database_url,
@@ -51,6 +77,12 @@ impl Config {
             jwt_refresh_expiry,
             client_origin,
             node_env,
+            smtp_host,
+            smtp_port,
+            smtp_username,
+            smtp_password,
+            smtp_from_email,
+            smtp_from_name,
         }
     }
 

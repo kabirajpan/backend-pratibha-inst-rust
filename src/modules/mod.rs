@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod auth;
 pub mod classes;
+pub mod email;
 pub mod finance;
 pub mod hostel;
 pub mod inventory;

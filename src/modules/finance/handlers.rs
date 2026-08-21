@@ -373,15 +373,61 @@ pub async fn create_fee_record(
         .await?;
 
         tx.commit().await?;
+
+        crate::modules::email::service::trigger_fee_receipt_email(
+            &state.config,
+            &state.db,
+            &new_fee_record.student_id,
+            &new_fee_record.receipt_no,
+            "library",
+            new_fee_record.amount,
+            new_fee_record.due_fees,
+            &new_fee_record.payment_mode,
+            &new_fee_record.payment_date.to_string()
+        ).await;
+
         Ok((StatusCode::CREATED, Json(ApiResponse { success: true, data: new_fee_record })))
     } else if fee_type == "transport" {
         let record = transport::create_record(&state.db, payload).await?;
+        crate::modules::email::service::trigger_fee_receipt_email(
+            &state.config,
+            &state.db,
+            &record.student_id,
+            &record.receipt_no,
+            "transport",
+            record.amount,
+            record.due_fees,
+            &record.payment_mode,
+            &record.payment_date.to_string()
+        ).await;
         Ok((StatusCode::CREATED, Json(ApiResponse { success: true, data: record })))
     } else if fee_type == "hostel" {
         let record = hostel::create_record(&state.db, payload).await?;
+        crate::modules::email::service::trigger_fee_receipt_email(
+            &state.config,
+            &state.db,
+            &record.student_id,
+            &record.receipt_no,
+            "hostel",
+            record.amount,
+            record.due_fees,
+            &record.payment_mode,
+            &record.payment_date.to_string()
+        ).await;
         Ok((StatusCode::CREATED, Json(ApiResponse { success: true, data: record })))
     } else {
         let record = tuition::create_record(&state.db, &fee_type, payload).await?;
+        crate::modules::email::service::trigger_fee_receipt_email(
+            &state.config,
+            &state.db,
+            &record.student_id,
+            &record.receipt_no,
+            &fee_type,
+            record.amount,
+            record.due_fees,
+            &record.payment_mode,
+            &record.payment_date.to_string()
+        ).await;
         Ok((StatusCode::CREATED, Json(ApiResponse { success: true, data: record })))
     }
 }
