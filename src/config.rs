@@ -16,6 +16,7 @@ pub struct Config {
     pub smtp_password: String,
     pub smtp_from_email: String,
     pub smtp_from_name: String,
+    pub resend_api_key: Option<String>,
 }
 
 impl Config {
@@ -68,6 +69,8 @@ impl Config {
         let smtp_from_name = env::var("SMTP_FROM_NAME")
             .unwrap_or_else(|_| "Pratibha Institute ERP".to_string());
 
+        let resend_api_key = env::var("RESEND_API_KEY").ok().filter(|s| !s.trim().is_empty());
+
         Config {
             port,
             database_url,
@@ -83,6 +86,7 @@ impl Config {
             smtp_password,
             smtp_from_email,
             smtp_from_name,
+            resend_api_key,
         }
     }
 

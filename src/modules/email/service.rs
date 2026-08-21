@@ -14,6 +14,38 @@ pub fn send_email_async(config: Config, to: String, subject: String, body_html: 
             return;
         }
 
+        // 1. If RESEND_API_KEY is provided, use Resend HTTPS REST API (Port 443 — guaranteed to work on Render Free Tier)
+        if let Some(ref api_key) = config.resend_api_key {
+            let client = reqwest::Client::new();
+            let from_str = format!("{} <onboarding@resend.dev>", config.smtp_from_name);
+            let payload = serde_json::json!({
+                "from": from_str,
+                "to": [recipient_email.clone()],
+                "subject": subject.clone(),
+                "html": body_html
+            });
+
+            match client.post("https://api.resend.com/emails")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(res) if res.status().is_success() => {
+                    info!("✅ Email successfully sent to '{}' via Resend HTTPS API [Subject: '{}']", recipient_email, subject);
+                    return;
+                },
+                Ok(res) => {
+                    let status = res.status();
+                    let err_text = res.text().await.unwrap_or_default();
+                    error!("❌ Resend HTTPS API returned error {}: {}", status, err_text);
+                },
+                Err(e) => {
+                    error!("❌ Resend HTTPS API connection failed: {:?}", e);
+                }
+            }
+        }
+
         let from_email = match config.smtp_from_email.parse() {
             Ok(e) => e,
             Err(err) => {
