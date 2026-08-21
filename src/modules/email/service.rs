@@ -49,10 +49,16 @@ pub fn send_email_async(config: Config, to: String, subject: String, body_html: 
 
         let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
 
-        let mailer: AsyncSmtpTransport<Tokio1Executor> = match AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host) {
+        let mailer_builder = if config.smtp_port == 465 {
+            AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
+        } else {
+            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
+        };
+
+        let mailer = match mailer_builder {
             Ok(builder) => builder.port(config.smtp_port).credentials(creds).build(),
             Err(e) => {
-                error!("Failed to build STARTTLS SMTP transport for {}: {:?}", config.smtp_host, e);
+                error!("Failed to build SMTP transport for {}:{}: {:?}", config.smtp_host, config.smtp_port, e);
                 return;
             }
         };
