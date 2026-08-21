@@ -207,12 +207,14 @@ pub async fn create_student(
             .await?;
 
             let pwd = default_password.as_deref().unwrap_or("—");
+            let portal_url = format!("{}/login", state.config.client_origin.trim_end_matches('/'));
             let html = crate::modules::email::service::build_student_welcome_html(
                 &student.name,
                 &student.student_id,
                 email,
                 pwd,
-                student.class_name.as_deref().unwrap_or("N/A")
+                student.class_name.as_deref().unwrap_or("N/A"),
+                &portal_url
             );
             crate::modules::email::service::send_email_async(
                 state.config.clone(),

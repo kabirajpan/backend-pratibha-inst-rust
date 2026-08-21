@@ -43,7 +43,7 @@ impl Config {
             .unwrap_or_else(|_| "7d".to_string());
 
         let client_origin = env::var("CLIENT_ORIGIN")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+            .unwrap_or_else(|_| "https://frontend-pratibha-inst.vercel.app".to_string());
 
         let node_env = env::var("NODE_ENV")
             .unwrap_or_else(|_| "development".to_string());

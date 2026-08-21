@@ -126,8 +126,10 @@ pub fn build_student_welcome_html(
     student_id: &str,
     login_email: &str,
     default_password: &str,
-    class_name: &str
+    class_name: &str,
+    portal_url: &str
 ) -> String {
+    let login_href = if portal_url.trim().is_empty() { "http://localhost:3000/login" } else { portal_url };
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -164,7 +166,7 @@ pub fn build_student_welcome_html(
             </p>
 
             <div style="text-align: center; margin: 32px 0 16px 0;">
-                <a href="http://localhost:3000/login" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
+                <a href="{login_href}" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
                     Access Student Portal &rarr;
                 </a>
             </div>
@@ -279,8 +281,10 @@ pub fn build_staff_welcome_html(
     staff_name: &str,
     role_title: &str,
     login_email: &str,
-    default_password: &str
+    default_password: &str,
+    portal_url: &str
 ) -> String {
+    let login_href = if portal_url.trim().is_empty() { "http://localhost:3000/login" } else { portal_url };
     format!(
         r#"<!DOCTYPE html>
 <html>
@@ -311,7 +315,7 @@ pub fn build_staff_welcome_html(
             </div>
 
             <div style="text-align: center; margin: 32px 0 16px 0;">
-                <a href="http://localhost:3000/login" style="background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
+                <a href="{login_href}" style="background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
                     Log In to Staff Portal &rarr;
                 </a>
             </div>

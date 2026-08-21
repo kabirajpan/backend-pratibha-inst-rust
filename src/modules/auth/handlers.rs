@@ -65,11 +65,13 @@ pub async fn register(
 
     if role != UserRole::Student {
         let role_title = payload.sub_role.as_ref().map(|sr| format!("{:?}", sr)).unwrap_or_else(|| format!("{:?}", role));
+        let portal_url = format!("{}/login", state.config.client_origin.trim_end_matches('/'));
         let html = crate::modules::email::service::build_staff_welcome_html(
             &payload.name,
             &role_title,
             &payload.email,
-            &payload.password
+            &payload.password,
+            &portal_url
         );
         crate::modules::email::service::send_email_async(
             state.config.clone(),
