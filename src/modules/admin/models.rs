@@ -61,6 +61,12 @@ pub struct StudentWithCount {
     pub signature_url: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub hostel_room: Option<String>,
+    pub hostel_bed: Option<String>,
+    pub hostel_fee: Option<f64>,
+    pub transport_vehicle: Option<String>,
+    pub transport_route: Option<String>,
+    pub transport_fee: Option<f64>,
     pub total_count: i32,
 }
 

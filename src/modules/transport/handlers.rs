@@ -84,7 +84,7 @@ pub async fn get_vehicle(
     auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
 
     let vehicle = sqlx::query_as::<_, Vehicle>(
-        "SELECT id, reg_no, type as type_val, capacity, driver, route, status, remarks, created_at, updated_at FROM vehicles WHERE id = $1"
+        "SELECT id, reg_no, type, capacity, driver, route, status, remarks, created_at, updated_at FROM vehicles WHERE id = $1"
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -124,7 +124,7 @@ pub async fn create_vehicle(
         r#"
         INSERT INTO vehicles (reg_no, type, capacity, driver, route, status, remarks)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, reg_no, type as type_val, capacity, driver, route, status, remarks, created_at, updated_at
+        RETURNING id, reg_no, type, capacity, driver, route, status, remarks, created_at, updated_at
         "#
     )
     .bind(&reg_no_up)
@@ -151,7 +151,7 @@ pub async fn edit_vehicle(
 
     // Fetch existing
     let existing = sqlx::query_as::<_, Vehicle>(
-        "SELECT id, reg_no, type as type_val, capacity, driver, route, status, remarks, created_at, updated_at FROM vehicles WHERE id = $1"
+        "SELECT id, reg_no, type, capacity, driver, route, status, remarks, created_at, updated_at FROM vehicles WHERE id = $1"
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -184,7 +184,7 @@ pub async fn edit_vehicle(
         UPDATE vehicles
         SET reg_no = $1, type = $2, capacity = $3, driver = $4, route = $5, status = $6, remarks = $7, updated_at = now()
         WHERE id = $8
-        RETURNING id, reg_no, type as type_val, capacity, driver, route, status, remarks, created_at, updated_at
+        RETURNING id, reg_no, type, capacity, driver, route, status, remarks, created_at, updated_at
         "#
     )
     .bind(&existing.reg_no)
@@ -211,7 +211,7 @@ pub async fn remove_vehicle(
     let deleted = sqlx::query_as::<_, Vehicle>(
         r#"
         DELETE FROM vehicles WHERE id = $1
-        RETURNING id, reg_no, type as type_val, capacity, driver, route, status, remarks, created_at, updated_at
+        RETURNING id, reg_no, type, capacity, driver, route, status, remarks, created_at, updated_at
         "#
     )
     .bind(id)
@@ -315,7 +315,7 @@ pub async fn get_expense(
 
     let expense = sqlx::query_as::<_, TransportExpense>(
         r#"
-        SELECT id, date, vehicle_no, type as type_val, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
+        SELECT id, date, vehicle_no, type, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
         FROM transport_expenses WHERE id = $1
         "#
     )
@@ -359,7 +359,7 @@ pub async fn create_expense(
         r#"
         INSERT INTO transport_expenses (date, vehicle_no, type, vendor, liters, rate, amount, payment_mode, remarks, utr_no)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id, date, vehicle_no, type as type_val, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
+        RETURNING id, date, vehicle_no, type, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
         "#
     )
     .bind(parsed_date)
@@ -419,7 +419,7 @@ pub async fn edit_expense(
     // Fetch existing
     let existing = sqlx::query_as::<_, TransportExpense>(
         r#"
-        SELECT id, date, vehicle_no, type as type_val, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
+        SELECT id, date, vehicle_no, type, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
         FROM transport_expenses WHERE id = $1
         "#
     )
@@ -458,7 +458,7 @@ pub async fn edit_expense(
         UPDATE transport_expenses
         SET date = $1, vehicle_no = $2, type = $3, vendor = $4, liters = $5, rate = $6, amount = $7, payment_mode = $8, remarks = $9, utr_no = $10
         WHERE id = $11
-        RETURNING id, date, vehicle_no, type as type_val, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
+        RETURNING id, date, vehicle_no, type, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
         "#
     )
     .bind(existing.date)
@@ -488,7 +488,7 @@ pub async fn remove_expense(
     let deleted = sqlx::query_as::<_, TransportExpense>(
         r#"
         DELETE FROM transport_expenses WHERE id = $1
-        RETURNING id, date, vehicle_no, type as type_val, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
+        RETURNING id, date, vehicle_no, type, vendor, liters::float8 AS liters, rate::float8 AS rate, amount::float8 AS amount, payment_mode, remarks, created_at, utr_no
         "#
     )
     .bind(id)

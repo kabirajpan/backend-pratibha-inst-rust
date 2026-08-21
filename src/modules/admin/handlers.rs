@@ -24,30 +24,43 @@ pub async fn get_students(
     let limit = q.limit.unwrap_or(50).max(1);
     let offset = (page - 1) * limit;
 
-    let mut sql = "SELECT *, COUNT(*) OVER()::int AS total_count FROM students WHERE 1=1".to_string();
+    let mut sql = r#"
+        SELECT s.*, 
+               hs.room_no AS hostel_room, 
+               hs.bed_no AS hostel_bed, 
+               hs.fee_amount::float8 AS hostel_fee, 
+               ts.vehicle_no AS transport_vehicle, 
+               ts.route AS transport_route, 
+               ts.fee_amount::float8 AS transport_fee, 
+               COUNT(*) OVER()::int AS total_count 
+        FROM students s
+        LEFT JOIN hostel_students hs ON LOWER(TRIM(hs.student_id)) = LOWER(TRIM(s.student_id)) AND hs.status = 'active'
+        LEFT JOIN transport_students ts ON LOWER(TRIM(ts.student_id)) = LOWER(TRIM(s.student_id)) AND ts.status = 'active'
+        WHERE 1=1
+    "#.to_string();
     let mut binders: Vec<String> = Vec::new();
     let mut idx = 1usize;
 
     if let Some(ref search) = q.search {
         let term = format!("%{}%", search);
-        sql.push_str(&format!(" AND (name ILIKE ${idx} OR student_id ILIKE ${idx})"));
+        sql.push_str(&format!(" AND (s.name ILIKE ${idx} OR s.student_id ILIKE ${idx})"));
         binders.push(term);
         idx += 1;
     }
 
     if let Some(ref class_name) = q.class_name {
-        sql.push_str(&format!(" AND class_name = ${idx}"));
+        sql.push_str(&format!(" AND s.class_name = ${idx}"));
         binders.push(class_name.clone());
         idx += 1;
     }
 
     if let Some(ref session) = q.session {
-        sql.push_str(&format!(" AND session = ${idx}"));
+        sql.push_str(&format!(" AND s.session = ${idx}"));
         binders.push(session.clone());
         idx += 1;
     }
 
-    sql.push_str(" ORDER BY student_id ASC");
+    sql.push_str(" ORDER BY s.student_id ASC");
     sql.push_str(&format!(" LIMIT ${idx} OFFSET ${}", idx + 1));
 
     let mut db_query = sqlx::query_as::<_, StudentWithCount>(&sql);

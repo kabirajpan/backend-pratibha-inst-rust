@@ -5,7 +5,9 @@ use uuid::Uuid;
 pub struct Vehicle {
     pub id: Uuid,
     pub reg_no: String,
-    pub type_val: String, // mapped to 'type' column
+    #[serde(rename = "type")]
+    #[sqlx(rename = "type")]
+    pub type_val: String,
     pub capacity: i32,
     pub driver: String,
     pub route: String,
