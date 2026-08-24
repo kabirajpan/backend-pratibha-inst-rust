@@ -225,6 +225,25 @@ pub async fn create_student(
         }
     }
 
+    let target_phone = student.phone.as_ref().or(student.parent_phone.as_ref()).or(payload.phone.as_ref());
+    if let Some(phone) = target_phone {
+        if !phone.trim().is_empty() {
+            let pwd = default_password.as_deref().unwrap_or("—");
+            let portal_url = format!("{}/login", state.config.client_origin.trim_end_matches('/'));
+            let msg = crate::modules::sms::service::build_student_welcome_sms(
+                &student.name,
+                &student.student_id,
+                pwd,
+                &portal_url
+            );
+            crate::modules::sms::service::send_sms_async(
+                state.config.clone(),
+                phone.clone(),
+                msg
+            );
+        }
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(json!({

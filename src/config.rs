@@ -17,6 +17,15 @@ pub struct Config {
     pub smtp_from_email: String,
     pub smtp_from_name: String,
     pub resend_api_key: Option<String>,
+    pub sms_provider: String,
+    pub sms_api_key: String,
+    pub sms_route: String,
+    pub sms_enabled: bool,
+    pub whatsapp_enabled: bool,
+    pub whatsapp_provider: String,
+    pub whatsapp_api_key: String,
+    pub whatsapp_phone_number_id: String,
+    pub whatsapp_account_sid: Option<String>,
 }
 
 impl Config {
@@ -71,6 +80,36 @@ impl Config {
 
         let resend_api_key = env::var("RESEND_API_KEY").ok().filter(|s| !s.trim().is_empty());
 
+        let sms_provider = env::var("SMS_PROVIDER")
+            .unwrap_or_else(|_| "fast2sms".to_string());
+
+        let sms_api_key = env::var("SMS_API_KEY")
+            .unwrap_or_else(|_| "dcwM9u31s5k0qS7DFEOzvfhxR6m84gXHKrpiTbtQIByJYeZNoPev7Bg1Mtxc9KhJ6PA0fGbHqjlECoUD".to_string());
+
+        let sms_route = env::var("SMS_ROUTE")
+            .unwrap_or_else(|_| "q".to_string());
+
+        let sms_enabled = env::var("SMS_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(true);
+
+        let whatsapp_enabled = env::var("WHATSAPP_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(true);
+
+        let whatsapp_provider = env::var("WHATSAPP_PROVIDER")
+            .unwrap_or_else(|_| "meta".to_string());
+
+        let whatsapp_api_key = env::var("WHATSAPP_API_KEY")
+            .unwrap_or_default();
+
+        let whatsapp_phone_number_id = env::var("WHATSAPP_PHONE_NUMBER_ID")
+            .unwrap_or_default();
+
+        let whatsapp_account_sid = env::var("WHATSAPP_ACCOUNT_SID")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
         Config {
             port,
             database_url,
@@ -87,6 +126,15 @@ impl Config {
             smtp_from_email,
             smtp_from_name,
             resend_api_key,
+            sms_provider,
+            sms_api_key,
+            sms_route,
+            sms_enabled,
+            whatsapp_enabled,
+            whatsapp_provider,
+            whatsapp_api_key,
+            whatsapp_phone_number_id,
+            whatsapp_account_sid,
         }
     }
 
