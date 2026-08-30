@@ -150,8 +150,8 @@ impl AddFeeRecordPayload {
             }
         }
         if let Some(ref mode) = self.payment_mode {
-            if mode != "Online" && mode != "Cash" && mode != "Bank" && mode != "Cheque" && mode != "Waived" {
-                return Err(crate::errors::AppError::BadRequest("payment_mode must be Online, Cash, Bank, Cheque, or Waived".to_string()));
+            if mode != "Online" && mode != "Cash" && mode != "Bank" && mode != "Cheque" && mode != "Waived" && mode != "UPI" && mode != "Card" {
+                return Err(crate::errors::AppError::BadRequest("payment_mode must be Online, Cash, Bank, Cheque, UPI, Card, or Waived".to_string()));
             }
         }
         Ok(())
@@ -218,8 +218,8 @@ impl UpdateFeeRecordPayload {
             }
         }
         if let Some(ref mode) = self.payment_mode {
-            if mode != "Online" && mode != "Cash" && mode != "Bank" && mode != "Cheque" && mode != "Waived" {
-                return Err(crate::errors::AppError::BadRequest("payment_mode must be Online, Cash, Bank, Cheque, or Waived".to_string()));
+            if mode != "Online" && mode != "Cash" && mode != "Bank" && mode != "Cheque" && mode != "Waived" && mode != "UPI" && mode != "Card" {
+                return Err(crate::errors::AppError::BadRequest("payment_mode must be Online, Cash, Bank, Cheque, UPI, Card, or Waived".to_string()));
             }
         }
         Ok(())

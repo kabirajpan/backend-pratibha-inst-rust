@@ -128,6 +128,23 @@ pub async fn create_student(
         _ => None,
     };
 
+    let class_name = payload.class_name.as_ref()
+        .map(|cn| cn.trim().to_string())
+        .filter(|cn| !cn.is_empty());
+
+    if let Some(ref cn) = class_name {
+        let existing_cls = sqlx::query("SELECT id FROM classes WHERE name = $1")
+            .bind(cn)
+            .fetch_optional(&state.db)
+            .await;
+        if let Ok(None) = existing_cls {
+            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1)")
+                .bind(cn)
+                .execute(&state.db)
+                .await;
+        }
+    }
+
     let student = sqlx::query_as::<_, Student>(
         r#"
         INSERT INTO students (
@@ -149,7 +166,7 @@ pub async fn create_student(
     )
     .bind(&payload.student_id)
     .bind(&payload.name)
-    .bind(&payload.class_name)
+    .bind(&class_name)
     .bind(&payload.email)
     .bind(&payload.phone)
     .bind(dob)
@@ -307,6 +324,23 @@ pub async fn edit_student(
         _ => existing.dob,
     };
 
+    let class_name = payload.class_name.as_ref()
+        .map(|cn| cn.trim().to_string())
+        .filter(|cn| !cn.is_empty());
+
+    if let Some(ref cn) = class_name {
+        let existing_cls = sqlx::query("SELECT id FROM classes WHERE name = $1")
+            .bind(cn)
+            .fetch_optional(&state.db)
+            .await;
+        if let Ok(None) = existing_cls {
+            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1)")
+                .bind(cn)
+                .execute(&state.db)
+                .await;
+        }
+    }
+
     let student = sqlx::query_as::<_, Student>(
         r#"
         UPDATE students
@@ -343,7 +377,7 @@ pub async fn edit_student(
     .bind(id)
     .bind(&payload.student_id)
     .bind(&payload.name)
-    .bind(&payload.class_name)
+    .bind(&class_name)
     .bind(&payload.email)
     .bind(&payload.phone)
     .bind(dob)
@@ -420,6 +454,71 @@ pub async fn import_students(
     for s in payload.students {
         s.validate()?;
 
+        let class_name = s.class_name.as_ref()
+            .map(|cn| cn.trim().to_string())
+            .filter(|cn| !cn.is_empty());
+        let email = s.email.as_ref()
+            .map(|e| e.trim().to_string())
+            .filter(|e| !e.is_empty());
+        let phone = s.phone.as_ref()
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty());
+        let father_name = s.father_name.as_ref()
+            .map(|f| f.trim().to_string())
+            .filter(|f| !f.is_empty());
+        let mother_name = s.mother_name.as_ref()
+            .map(|m| m.trim().to_string())
+            .filter(|m| !m.is_empty());
+        let parent_phone = s.parent_phone.as_ref()
+            .map(|pp| pp.trim().to_string())
+            .filter(|pp| !pp.is_empty());
+        let session = s.session.as_ref()
+            .map(|se| se.trim().to_string())
+            .filter(|se| !se.is_empty());
+        let course_name = s.course_name.as_ref()
+            .map(|co| co.trim().to_string())
+            .filter(|co| !co.is_empty());
+        let admission_no = s.admission_no.as_ref()
+            .map(|a| a.trim().to_string())
+            .filter(|a| !a.is_empty());
+        let current_address = s.current_address.as_ref()
+            .map(|a| a.trim().to_string())
+            .filter(|a| !a.is_empty());
+        let permanent_address = s.permanent_address.as_ref()
+            .map(|a| a.trim().to_string())
+            .filter(|a| !a.is_empty());
+        let aadhar_no = s.aadhar_no.as_ref()
+            .map(|a| a.trim().to_string())
+            .filter(|a| !a.is_empty());
+        let bank_name = s.bank_name.as_ref()
+            .map(|b| b.trim().to_string())
+            .filter(|b| !b.is_empty());
+        let account_no = s.account_no.as_ref()
+            .map(|a| a.trim().to_string())
+            .filter(|a| !a.is_empty());
+        let ifsc_code = s.ifsc_code.as_ref()
+            .map(|i| i.trim().to_string())
+            .filter(|i| !i.is_empty());
+        let blood_group = s.blood_group.as_ref()
+            .map(|b| b.trim().to_string())
+            .filter(|b| !b.is_empty());
+        let gender = s.gender.as_ref()
+            .map(|g| g.trim().to_string())
+            .filter(|g| !g.is_empty());
+
+        if let Some(ref cn) = class_name {
+            let existing_cls = sqlx::query("SELECT id FROM classes WHERE name = $1")
+                .bind(cn)
+                .fetch_optional(&state.db)
+                .await;
+            if let Ok(None) = existing_cls {
+                let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1)")
+                    .bind(cn)
+                    .execute(&state.db)
+                    .await;
+            }
+        }
+
         // Check if already exists and upsert
         let existing = sqlx::query_as::<_, Student>(
             "SELECT * FROM students WHERE student_id = $1"
@@ -454,17 +553,17 @@ pub async fn import_students(
             )
             .bind(&s.student_id)
             .bind(&s.name)
-            .bind(&s.class_name)
-            .bind(&s.email)
-            .bind(&s.phone)
+            .bind(&class_name)
+            .bind(&email)
+            .bind(&phone)
             .bind(dob)
             .bind(&s.status)
-            .bind(&s.father_name)
-            .bind(&s.mother_name)
-            .bind(&s.parent_phone)
-            .bind(&s.session)
-            .bind(&s.course_name)
-            .bind(&s.admission_no)
+            .bind(&father_name)
+            .bind(&mother_name)
+            .bind(&parent_phone)
+            .bind(&session)
+            .bind(&course_name)
+            .bind(&admission_no)
             .bind(admission_date)
             .fetch_one(&state.db)
             .await?
@@ -495,26 +594,26 @@ pub async fn import_students(
             )
             .bind(&s.student_id)
             .bind(&s.name)
-            .bind(&s.class_name)
-            .bind(&s.email)
-            .bind(&s.phone)
+            .bind(&class_name)
+            .bind(&email)
+            .bind(&phone)
             .bind(dob)
             .bind(s.status.as_deref().unwrap_or("active"))
-            .bind(&s.father_name)
-            .bind(&s.mother_name)
-            .bind(&s.parent_phone)
-            .bind(&s.current_address)
-            .bind(&s.permanent_address)
-            .bind(&s.aadhar_no)
-            .bind(&s.bank_name)
-            .bind(&s.account_no)
-            .bind(&s.ifsc_code)
-            .bind(&s.admission_no)
+            .bind(&father_name)
+            .bind(&mother_name)
+            .bind(&parent_phone)
+            .bind(&current_address)
+            .bind(&permanent_address)
+            .bind(&aadhar_no)
+            .bind(&bank_name)
+            .bind(&account_no)
+            .bind(&ifsc_code)
+            .bind(&admission_no)
             .bind(admission_date)
-            .bind(&s.session)
-            .bind(&s.course_name)
-            .bind(&s.blood_group)
-            .bind(&s.gender)
+            .bind(&session)
+            .bind(&course_name)
+            .bind(&blood_group)
+            .bind(&gender)
             .bind(&s.photo_url)
             .bind(&s.signature_url)
             .fetch_one(&state.db)
