@@ -10,6 +10,7 @@ use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthUser;
 use crate::modules::auth::models::{ApiResponse, UserSubRole};
+use crate::utils::activity::log_audit;
 use super::models::*;
 
 // ─── VEHICLES ─────────────────────────────────────────────
@@ -337,14 +338,23 @@ pub async fn create_expense(
 
     let vehicle_no_up = payload.vehicle_no.to_uppercase();
 
-    // Verify vehicle exists
+    // Verify vehicle exists (auto-create if missing for bulk imports)
     let vehicle = sqlx::query("SELECT id FROM vehicles WHERE reg_no = $1")
         .bind(&vehicle_no_up)
         .fetch_optional(&state.db)
         .await?;
 
     if vehicle.is_none() {
-        return Err(AppError::NotFound(format!("Vehicle {} is not registered", vehicle_no_up)));
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO vehicles (reg_no, type, capacity, status)
+            VALUES ($1, 'Bus', 40, 'active')
+            ON CONFLICT (reg_no) DO NOTHING
+            "#
+        )
+        .bind(&vehicle_no_up)
+        .execute(&state.db)
+        .await;
     }
 
     let parsed_date = chrono::NaiveDate::parse_from_str(&payload.date, "%Y-%m-%d").unwrap();
@@ -403,6 +413,16 @@ pub async fn create_expense(
     .await?;
 
     tx.commit().await?;
+
+    let user_role_str = format!("{:?}", auth_user.role);
+    let _ = log_audit(
+        &state.db,
+        "Staff User",
+        &user_role_str,
+        "EXPENSE_RECORDED",
+        "transport",
+        &format!("Vehicle {} - {} amount ₹{}", expense.vehicle_no, expense.type_val, expense.amount)
+    ).await;
 
     Ok((StatusCode::CREATED, Json(ApiResponse { success: true, data: expense })))
 }

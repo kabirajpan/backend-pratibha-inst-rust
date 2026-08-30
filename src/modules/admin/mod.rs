@@ -13,7 +13,7 @@ pub fn admin_router() -> Router<AppState> {
         .route("/users",            get(handlers::get_all_users))
         .route("/users/:id/toggle", patch(handlers::toggle_user_active))
         .route("/users/:id",        delete(handlers::delete_user))
-        .route("/audit-logs",       get(handlers::get_audit_logs))
+        .route("/audit-logs",       get(handlers::get_audit_logs).post(handlers::create_audit_log))
 }
 
 pub fn students_router() -> Router<AppState> {

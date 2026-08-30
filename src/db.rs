@@ -8,8 +8,9 @@ pub type DbPool = sqlx::PgPool;
 pub async fn create_pool(config: &Config) -> Result<DbPool, AppError> {
     let pool = PgPoolOptions::new()
         .max_connections(15)
-        .min_connections(8) // Keep baseline warm connections to avoid handshake latencies on active requests
-        .idle_timeout(Duration::from_secs(600))
+        .min_connections(0)
+        .idle_timeout(Duration::from_secs(120))
+        .max_lifetime(Duration::from_secs(300))
         .acquire_timeout(Duration::from_secs(30))
         .connect(&config.database_url)
         .await

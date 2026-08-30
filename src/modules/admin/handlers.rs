@@ -810,3 +810,29 @@ pub async fn get_audit_logs(
         data: logs,
     }))
 }
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateAuditLogPayload {
+    pub action: String,
+    pub module: String,
+    pub details: String,
+}
+
+pub async fn create_audit_log(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(payload): Json<CreateAuditLogPayload>,
+) -> Result<impl IntoResponse, AppError> {
+    let user_role_str = format!("{:?}", auth_user.role);
+    crate::utils::activity::log_audit(
+        &state.db,
+        "Staff User",
+        &user_role_str,
+        &payload.action,
+        &payload.module,
+        &payload.details,
+    )
+    .await?;
+
+    Ok(Json(json!({ "success": true })))
+}

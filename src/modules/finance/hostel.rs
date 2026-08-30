@@ -2,6 +2,7 @@
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use crate::errors::AppError;
+use crate::utils::activity::log_audit;
 use super::models::{FeeRecord, AddFeeRecordPayload, UpdateFeeRecordPayload};
 
 pub async fn create_record(
@@ -124,6 +125,16 @@ pub async fn create_record(
         .fetch_one(db)
         .await?
     };
+
+    let rec_no = &record.receipt_no;
+    let _ = log_audit(
+        db,
+        "Staff User",
+        "HostelManager",
+        "FEE_COLLECTED",
+        "finance",
+        &format!("Hostel Fee Receipt {} for student {} amount ₹{}", rec_no, record.student_id, record.amount)
+    ).await;
 
     Ok(record)
 }

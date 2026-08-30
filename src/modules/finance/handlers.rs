@@ -11,6 +11,7 @@ use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthUser;
 use crate::modules::auth::models::{ApiResponse, UserSubRole};
+use crate::utils::activity::log_audit;
 use super::models::*;
 use super::{transport, hostel, tuition};
 
@@ -317,17 +318,29 @@ pub async fn create_fee_record(
         // Library custom logic with tx
         let mut tx = state.db.begin().await?;
 
-        // 1. Verify library member/student exists
+        // 1. Verify library member/student exists (auto-create baseline student if missing for bulk imports)
         let student_id = &payload.student_id;
-        let row = sqlx::query("SELECT student_id FROM students WHERE student_id = $1")
-            .bind(student_id)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let default_class = "B.Sc. Nursing 1st Year";
+        let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
+            .bind(default_class)
+            .execute(&mut *tx)
+            .await;
 
-        let actual_student_id = match row {
-            Some(r) => r.try_get::<String, _>("student_id").unwrap_or_else(|_| student_id.to_string()),
-            None => student_id.to_string(),
-        };
+        let default_dob = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        let _ = sqlx::query(
+            r#"
+            INSERT INTO students (
+                student_id, name, class_name, dob, status
+            ) VALUES ($1, $2, $3, $4, 'active')
+            ON CONFLICT (student_id) DO NOTHING
+            "#
+        )
+        .bind(student_id)
+        .bind(format!("Student {}", student_id))
+        .bind(default_class)
+        .bind(default_dob)
+        .execute(&mut *tx)
+        .await;
 
         let parsed_receipt_date = chrono::NaiveDate::parse_from_str(&payload.receipt_date, "%Y-%m-%d")
             .map_err(|_| AppError::BadRequest("Invalid receipt date format".to_string()))?;
@@ -337,7 +350,7 @@ pub async fn create_fee_record(
         let room = payload.room.as_deref().unwrap_or("Library Fine");
         let receipt_book_no = payload.receipt_book_no.as_deref().unwrap_or("—");
         let receipt_no = if payload.receipt_no.trim().is_empty() || payload.receipt_no == "—" {
-            format!("LIB-{}", chrono::Utc::now().timestamp())
+            format!("LIB-{}", chrono::Utc::now().timestamp_micros())
         } else {
             payload.receipt_no.clone()
         };
@@ -347,30 +360,72 @@ pub async fn create_fee_record(
         let due_fees = payload.due_fees.unwrap_or(0.0);
         let remarks = payload.remarks.as_deref().unwrap_or("—");
 
-        let new_fee_record = sqlx::query_as::<_, FeeRecord>(
-            r#"
-            INSERT INTO fee_collections (
-                student_id, fee_type, room, bus_route, bus_no, 
-                receipt_book_no, receipt_no, receipt_date, payment_date, 
-                amount, utr_no, payment_mode, due_fees, remarks, discount
-            ) VALUES ($1, 'library', $2, '—', '—', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0.00) 
-            RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                      amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
-            "#
-        )
-        .bind(actual_student_id)
-        .bind(room)
-        .bind(receipt_book_no)
-        .bind(receipt_no)
-        .bind(parsed_receipt_date)
-        .bind(parsed_payment_date)
-        .bind(amount)
-        .bind(utr_no)
-        .bind(payment_mode)
-        .bind(due_fees)
-        .bind(remarks)
-        .fetch_one(&mut *tx)
-        .await?;
+        let existing_fee = sqlx::query("SELECT id FROM fee_collections WHERE receipt_no = $1")
+            .bind(&receipt_no)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+        let new_fee_record = if let Some(row) = existing_fee {
+            let existing_id: Uuid = row.get("id");
+            sqlx::query_as::<_, FeeRecord>(
+                r#"
+                UPDATE fee_collections SET
+                    student_id = $1,
+                    fee_type = 'library',
+                    room = $2,
+                    receipt_book_no = $3,
+                    receipt_date = $4,
+                    payment_date = $5,
+                    amount = $6,
+                    utr_no = $7,
+                    payment_mode = $8,
+                    due_fees = $9,
+                    remarks = $10,
+                    discount = 0.00
+                WHERE id = $11
+                RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
+                          amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                "#
+            )
+            .bind(student_id)
+            .bind(room)
+            .bind(receipt_book_no)
+            .bind(parsed_receipt_date)
+            .bind(parsed_payment_date)
+            .bind(amount)
+            .bind(utr_no)
+            .bind(payment_mode)
+            .bind(due_fees)
+            .bind(remarks)
+            .bind(existing_id)
+            .fetch_one(&mut *tx)
+            .await?
+        } else {
+            sqlx::query_as::<_, FeeRecord>(
+                r#"
+                INSERT INTO fee_collections (
+                    student_id, fee_type, room, bus_route, bus_no, 
+                    receipt_book_no, receipt_no, receipt_date, payment_date, 
+                    amount, utr_no, payment_mode, due_fees, remarks, discount
+                ) VALUES ($1, 'library', $2, '—', '—', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0.00) 
+                RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
+                          amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                "#
+            )
+            .bind(student_id)
+            .bind(room)
+            .bind(receipt_book_no)
+            .bind(&receipt_no)
+            .bind(parsed_receipt_date)
+            .bind(parsed_payment_date)
+            .bind(amount)
+            .bind(utr_no)
+            .bind(payment_mode)
+            .bind(due_fees)
+            .bind(remarks)
+            .fetch_one(&mut *tx)
+            .await?
+        };
 
         tx.commit().await?;
 
@@ -598,6 +653,18 @@ pub async fn edit_fee_record(
         .await?;
 
         tx.commit().await?;
+
+        let user_role_str = format!("{:?}", auth_user.role);
+        let rec_no = &new_fee_record.receipt_no;
+        let _ = log_audit(
+            &state.db,
+            "Staff User",
+            &user_role_str,
+            "FEE_COLLECTED",
+            "finance",
+            &format!("Receipt {} for student {} amount ₹{}", rec_no, new_fee_record.student_id, new_fee_record.amount)
+        ).await;
+
         return Ok(Json(ApiResponse { success: true, data: new_fee_record }));
     }
 
@@ -812,27 +879,81 @@ pub async fn create_expense(
     let party_name = payload.party_name.as_deref().unwrap_or("—");
     let spent_by = payload.spent_by.as_deref().unwrap_or("—");
 
-    let record = sqlx::query_as::<_, GeneralExpense>(
-        r#"
-        INSERT INTO expenses (ref_no, description, amount, category, date, payment_mode, remarks, utr, receipt, party_name, spent_by, voucher_no)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        RETURNING id, ref_no, description, amount::float8 AS amount, category, date, payment_mode, remarks, utr, receipt, party_name, spent_by, voucher_no, created_at
-        "#
-    )
-    .bind(ref_no)
-    .bind(&payload.description)
-    .bind(payload.amount)
-    .bind(&payload.category)
-    .bind(parsed_date)
-    .bind(payment_mode)
-    .bind(remarks)
-    .bind(utr)
-    .bind(receipt)
-    .bind(party_name)
-    .bind(spent_by)
-    .bind(voucher_no)
-    .fetch_one(&state.db)
-    .await?;
+    let existing_expense = sqlx::query("SELECT id FROM expenses WHERE voucher_no = $1 OR ref_no = $1")
+        .bind(voucher_no)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let record = if let Some(row) = existing_expense {
+        let existing_id: Uuid = row.get("id");
+        sqlx::query_as::<_, GeneralExpense>(
+            r#"
+            UPDATE expenses SET
+                ref_no = $1,
+                description = $2,
+                amount = $3,
+                category = $4,
+                date = $5,
+                payment_mode = $6,
+                remarks = $7,
+                utr = $8,
+                receipt = $9,
+                party_name = $10,
+                spent_by = $11,
+                voucher_no = $12
+            WHERE id = $13
+            RETURNING id, ref_no, description, amount::float8 AS amount, category, date, payment_mode, remarks, utr, receipt, party_name, spent_by, voucher_no, created_at
+            "#
+        )
+        .bind(ref_no)
+        .bind(&payload.description)
+        .bind(payload.amount)
+        .bind(&payload.category)
+        .bind(parsed_date)
+        .bind(payment_mode)
+        .bind(remarks)
+        .bind(utr)
+        .bind(receipt)
+        .bind(party_name)
+        .bind(spent_by)
+        .bind(voucher_no)
+        .bind(existing_id)
+        .fetch_one(&state.db)
+        .await?
+    } else {
+        sqlx::query_as::<_, GeneralExpense>(
+            r#"
+            INSERT INTO expenses (ref_no, description, amount, category, date, payment_mode, remarks, utr, receipt, party_name, spent_by, voucher_no)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id, ref_no, description, amount::float8 AS amount, category, date, payment_mode, remarks, utr, receipt, party_name, spent_by, voucher_no, created_at
+            "#
+        )
+        .bind(ref_no)
+        .bind(&payload.description)
+        .bind(payload.amount)
+        .bind(&payload.category)
+        .bind(parsed_date)
+        .bind(payment_mode)
+        .bind(remarks)
+        .bind(utr)
+        .bind(receipt)
+        .bind(party_name)
+        .bind(spent_by)
+        .bind(voucher_no)
+        .fetch_one(&state.db)
+        .await?
+    };
+
+    let user_role_str = format!("{:?}", auth_user.role);
+    let v_no = &record.voucher_no;
+    let _ = log_audit(
+        &state.db,
+        "Staff User",
+        &user_role_str,
+        "EXPENSE_RECORDED",
+        "finance",
+        &format!("Voucher {} - {} amount ₹{}", v_no, record.description, record.amount)
+    ).await;
 
     Ok((StatusCode::CREATED, Json(ApiResponse { success: true, data: record })))
 }
