@@ -9,8 +9,8 @@ use crate::config::Config;
 pub fn send_email_async(config: Config, to: String, subject: String, body_html: String) {
     tokio::spawn(async move {
         let recipient_email = to.trim().to_string();
-        if recipient_email.is_empty() || !recipient_email.contains('@') {
-            info!("Skipping email send: invalid recipient address '{}'", recipient_email);
+        if recipient_email.is_empty() || !recipient_email.contains('@') || recipient_email.ends_with("@example.com") || recipient_email.ends_with("@example.org") || recipient_email.ends_with("@example.net") {
+            info!("Skipping email send for test domain: '{}'", recipient_email);
             return;
         }
 

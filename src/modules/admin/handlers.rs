@@ -60,7 +60,11 @@ pub async fn get_students(
         idx += 1;
     }
 
-    sql.push_str(" ORDER BY s.student_id ASC");
+    match q.sort_by.as_deref() {
+        Some("id") | Some("number") => sql.push_str(" ORDER BY s.student_id ASC"),
+        Some("name") => sql.push_str(" ORDER BY s.name ASC"),
+        _ => sql.push_str(" ORDER BY s.updated_at DESC, s.created_at DESC"),
+    }
     sql.push_str(&format!(" LIMIT ${idx} OFFSET ${}", idx + 1));
 
     let mut db_query = sqlx::query_as::<_, StudentWithCount>(&sql);

@@ -77,6 +77,7 @@ pub struct GetStudentsQuery {
     pub session: Option<String>,
     pub page: Option<i32>,
     pub limit: Option<i32>,
+    pub sort_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
