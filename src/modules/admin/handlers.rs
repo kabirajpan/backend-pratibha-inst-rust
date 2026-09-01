@@ -20,12 +20,20 @@ pub async fn get_students(
     _auth_user: AuthUser, // any authenticated user (staff or admin) can list students
     Query(q): Query<GetStudentsQuery>,
 ) -> Result<impl IntoResponse, AppError> {
+    let _ = sqlx::query("ALTER TABLE students ADD COLUMN IF NOT EXISTS year VARCHAR;")
+        .execute(&state.db)
+        .await;
+
     let page = q.page.unwrap_or(1).max(1);
     let limit = q.limit.unwrap_or(50).max(1);
     let offset = (page - 1) * limit;
 
     let mut sql = r#"
-        SELECT s.*, 
+        SELECT s.id, s.student_id, s.name, s.class_name, s.email, s.phone, s.dob, s.status,
+               s.gender, s.blood_group, s.father_name, s.mother_name, s.parent_phone,
+               s.current_address, s.permanent_address, s.aadhar_no, s.bank_name,
+               s.account_no, s.ifsc_code, s.admission_no, s.admission_date, s.session,
+               s.course_name, s.year, s.photo_url, s.signature_url, s.created_at, s.updated_at,
                hs.room_no AS hostel_room, 
                hs.bed_no AS hostel_bed, 
                hs.fee_amount::float8 AS hostel_fee, 
@@ -132,17 +140,20 @@ pub async fn create_student(
         _ => None,
     };
 
-    let class_name = payload.class_name.as_ref()
+    let mut class_name = payload.class_name.as_ref()
         .map(|cn| cn.trim().to_string())
         .filter(|cn| !cn.is_empty());
 
     if let Some(ref cn) = class_name {
-        let existing_cls = sqlx::query("SELECT id FROM classes WHERE name = $1")
+        let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
             .bind(cn)
             .fetch_optional(&state.db)
-            .await;
-        if let Ok(None) = existing_cls {
-            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1)")
+            .await
+            .unwrap_or(None);
+        if let Some((official_name,)) = existing_cls {
+            class_name = Some(official_name);
+        } else {
+            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT DO NOTHING")
                 .bind(cn)
                 .execute(&state.db)
                 .await;
@@ -157,14 +168,14 @@ pub async fn create_student(
             current_address, permanent_address,
             aadhar_no, bank_name, account_no, ifsc_code,
             admission_no, admission_date, session, course_name,
-            blood_group, gender, photo_url, signature_url
+            blood_group, gender, photo_url, signature_url, year
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7,
             $8, $9, $10,
             $11, $12,
             $13, $14, $15, $16,
             $17, $18, $19, $20,
-            $21, $22, $23, $24
+            $21, $22, $23, $24, $25
         ) RETURNING *
         "#
     )
@@ -192,6 +203,7 @@ pub async fn create_student(
     .bind(&payload.gender)
     .bind(&payload.photo_url)
     .bind(&payload.signature_url)
+    .bind(&payload.year)
     .fetch_one(&state.db)
     .await?;
 
@@ -328,17 +340,20 @@ pub async fn edit_student(
         _ => existing.dob,
     };
 
-    let class_name = payload.class_name.as_ref()
+    let mut class_name = payload.class_name.as_ref()
         .map(|cn| cn.trim().to_string())
         .filter(|cn| !cn.is_empty());
 
     if let Some(ref cn) = class_name {
-        let existing_cls = sqlx::query("SELECT id FROM classes WHERE name = $1")
+        let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
             .bind(cn)
             .fetch_optional(&state.db)
-            .await;
-        if let Ok(None) = existing_cls {
-            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1)")
+            .await
+            .unwrap_or(None);
+        if let Some((official_name,)) = existing_cls {
+            class_name = Some(official_name);
+        } else {
+            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT DO NOTHING")
                 .bind(cn)
                 .execute(&state.db)
                 .await;
@@ -373,6 +388,7 @@ pub async fn edit_student(
             gender            = COALESCE($23, gender),
             photo_url         = COALESCE($24, photo_url),
             signature_url     = COALESCE($25, signature_url),
+            year              = COALESCE($26, year),
             updated_at        = now()
         WHERE id = $1
         RETURNING *
@@ -403,6 +419,7 @@ pub async fn edit_student(
     .bind(&payload.gender)
     .bind(&payload.photo_url)
     .bind(&payload.signature_url)
+    .bind(&payload.year)
     .fetch_one(&state.db)
     .await?;
 
@@ -458,9 +475,6 @@ pub async fn import_students(
     for s in payload.students {
         s.validate()?;
 
-        let class_name = s.class_name.as_ref()
-            .map(|cn| cn.trim().to_string())
-            .filter(|cn| !cn.is_empty());
         let email = s.email.as_ref()
             .map(|e| e.trim().to_string())
             .filter(|e| !e.is_empty());
@@ -509,14 +523,23 @@ pub async fn import_students(
         let gender = s.gender.as_ref()
             .map(|g| g.trim().to_string())
             .filter(|g| !g.is_empty());
+        let year = s.year.as_ref()
+            .map(|y| y.trim().to_string())
+            .filter(|y| !y.is_empty());
+        let mut class_name = s.class_name.as_ref()
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty());
 
         if let Some(ref cn) = class_name {
-            let existing_cls = sqlx::query("SELECT id FROM classes WHERE name = $1")
+            let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                 .bind(cn)
                 .fetch_optional(&state.db)
-                .await;
-            if let Ok(None) = existing_cls {
-                let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1)")
+                .await
+                .unwrap_or(None);
+            if let Some((official_name,)) = existing_cls {
+                class_name = Some(official_name);
+            } else {
+                let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT DO NOTHING")
                     .bind(cn)
                     .execute(&state.db)
                     .await;
@@ -550,7 +573,11 @@ pub async fn import_students(
                     father_name = COALESCE($8, father_name), mother_name = COALESCE($9, mother_name),
                     parent_phone = COALESCE($10, parent_phone), session = COALESCE($11, session),
                     course_name = COALESCE($12, course_name), admission_no = COALESCE($13, admission_no),
-                    admission_date = $14, updated_at = now()
+                    admission_date = $14, year = COALESCE($15, year), blood_group = COALESCE($16, blood_group),
+                    gender = COALESCE($17, gender), aadhar_no = COALESCE($18, aadhar_no),
+                    current_address = COALESCE($19, current_address), permanent_address = COALESCE($20, permanent_address),
+                    bank_name = COALESCE($21, bank_name), account_no = COALESCE($22, account_no),
+                    ifsc_code = COALESCE($23, ifsc_code), updated_at = now()
                 WHERE student_id = $1
                 RETURNING *
                 "#
@@ -569,6 +596,15 @@ pub async fn import_students(
             .bind(&course_name)
             .bind(&admission_no)
             .bind(admission_date)
+            .bind(&year)
+            .bind(&blood_group)
+            .bind(&gender)
+            .bind(&aadhar_no)
+            .bind(&current_address)
+            .bind(&permanent_address)
+            .bind(&bank_name)
+            .bind(&account_no)
+            .bind(&ifsc_code)
             .fetch_one(&state.db)
             .await?
         } else {
@@ -588,11 +624,11 @@ pub async fn import_students(
                     current_address, permanent_address,
                     aadhar_no, bank_name, account_no, ifsc_code,
                     admission_no, admission_date, session, course_name,
-                    blood_group, gender, photo_url, signature_url
+                    blood_group, gender, photo_url, signature_url, year
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7,
                     $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                    $17, $18, $19, $20, $21, $22, $23, $24
+                    $17, $18, $19, $20, $21, $22, $23, $24, $25
                 ) RETURNING *
                 "#
             )
@@ -620,6 +656,7 @@ pub async fn import_students(
             .bind(&gender)
             .bind(&s.photo_url)
             .bind(&s.signature_url)
+            .bind(&year)
             .fetch_one(&state.db)
             .await?
         };

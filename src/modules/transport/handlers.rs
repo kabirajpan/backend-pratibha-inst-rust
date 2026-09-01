@@ -17,10 +17,9 @@ use super::models::*;
 
 pub async fn get_vehicles(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    _auth_user: AuthUser,
     Query(q): Query<GetVehiclesQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::TransportManager, UserSubRole::FinanceManager])?;
 
     let page = q.page.unwrap_or(1).max(1);
     let limit = q.limit.unwrap_or(50).max(1);
@@ -664,8 +663,8 @@ pub async fn create_transport_student(
                 .await?;
             if vehicle.is_none() {
                 let _ = sqlx::query(
-                    "INSERT INTO vehicles (reg_no, type, capacity, driver_name, driver_phone, status, fitness_expiry, insurance_expiry, puc_expiry)
-                     VALUES ($1, 'Bus', 40, '—', '—', 'active', now() + interval '1 year', now() + interval '1 year', now() + interval '1 year')
+                    "INSERT INTO vehicles (reg_no, type, capacity, driver, route, status, remarks)
+                     VALUES ($1, 'Bus', 40, '—', 'Campus Route', 'active', 'Auto-created from student registration')
                      ON CONFLICT (reg_no) DO NOTHING"
                 )
                 .bind(&v_up)

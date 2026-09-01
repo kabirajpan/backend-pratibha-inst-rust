@@ -15,9 +15,9 @@ use super::models::{Class, CreateClassPayload, UpdateClassPayload};
 
 pub async fn get_classes(
     State(state): State<AppState>,
-    _auth_user: AuthUser, // Requires authentication (can be any logged-in user)
+    _auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let classes = sqlx::query_as::<_, Class>("SELECT * FROM classes ORDER BY name ASC")
+    let classes = sqlx::query_as::<_, Class>("SELECT id, name, created_at, updated_at FROM classes ORDER BY name ASC")
         .fetch_all(&state.db)
         .await?;
 
@@ -32,13 +32,13 @@ pub async fn create_class(
     auth_user: AuthUser,
     Json(payload): Json<CreateClassPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Requires Admin role
     auth_user.authorize(&[UserRole::Admin])?;
     payload.validate()?;
 
-    // Check duplicate name
+    let name = payload.name.trim();
+
     let duplicate = sqlx::query("SELECT id FROM classes WHERE name = $1")
-        .bind(&payload.name)
+        .bind(name)
         .fetch_optional(&state.db)
         .await?;
 
@@ -47,13 +47,12 @@ pub async fn create_class(
     }
 
     let new_class = sqlx::query_as::<_, Class>(
-        "INSERT INTO classes (name) VALUES ($1) RETURNING *"
+        "INSERT INTO classes (name) VALUES ($1) RETURNING id, name, created_at, updated_at"
     )
-    .bind(&payload.name)
+    .bind(name)
     .fetch_one(&state.db)
     .await?;
 
-    // Log audit activity
     log_activity(
         &state.db,
         Some(auth_user.id),
@@ -79,13 +78,13 @@ pub async fn edit_class(
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateClassPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Requires Admin role
     auth_user.authorize(&[UserRole::Admin])?;
     payload.validate()?;
 
-    // Check duplicate name excluding current class ID
+    let name = payload.name.trim();
+
     let duplicate = sqlx::query("SELECT id FROM classes WHERE name = $1 AND id != $2")
-        .bind(&payload.name)
+        .bind(name)
         .bind(id)
         .fetch_optional(&state.db)
         .await?;
@@ -95,16 +94,15 @@ pub async fn edit_class(
     }
 
     let updated_class = sqlx::query_as::<_, Class>(
-        "UPDATE classes SET name = $1, updated_at = now() WHERE id = $2 RETURNING *"
+        "UPDATE classes SET name = $1, updated_at = now() WHERE id = $2 RETURNING id, name, created_at, updated_at"
     )
-    .bind(&payload.name)
+    .bind(name)
     .bind(id)
     .fetch_optional(&state.db)
     .await?;
 
     let updated_class = updated_class.ok_or_else(|| AppError::NotFound("Class not found".to_string()))?;
 
-    // Log audit activity
     log_activity(
         &state.db,
         Some(auth_user.id),
@@ -126,11 +124,10 @@ pub async fn remove_class(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Requires Admin role
     auth_user.authorize(&[UserRole::Admin])?;
 
     let deleted_class = sqlx::query_as::<_, Class>(
-        "DELETE FROM classes WHERE id = $1 RETURNING *"
+        "DELETE FROM classes WHERE id = $1 RETURNING id, name, created_at, updated_at"
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -138,7 +135,6 @@ pub async fn remove_class(
 
     let deleted_class = deleted_class.ok_or_else(|| AppError::NotFound("Class not found".to_string()))?;
 
-    // Log audit activity
     log_activity(
         &state.db,
         Some(auth_user.id),

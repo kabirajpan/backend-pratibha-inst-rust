@@ -2,6 +2,7 @@ pub mod admin;
 pub mod announcements;
 pub mod auth;
 pub mod classes;
+pub mod courses;
 pub mod email;
 pub mod finance;
 pub mod hostel;
@@ -21,6 +22,7 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/admin",         admin::admin_router())
         .nest("/students",      admin::students_router())
         .nest("/classes",       classes::router())
+        .nest("/courses",       courses::router())
         .nest("/inventory",     inventory::router())
         .nest("/library",       library::router(state.clone()))
         .nest("/transport",     transport::router())

@@ -26,6 +26,7 @@ pub struct Student {
     pub admission_date: Option<chrono::NaiveDate>,
     pub session: Option<String>,
     pub course_name: Option<String>,
+    pub year: Option<String>,
     pub photo_url: Option<String>,
     pub signature_url: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -57,6 +58,7 @@ pub struct StudentWithCount {
     pub admission_date: Option<chrono::NaiveDate>,
     pub session: Option<String>,
     pub course_name: Option<String>,
+    pub year: Option<String>,
     pub photo_url: Option<String>,
     pub signature_url: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -104,8 +106,11 @@ pub struct CreateStudentPayload {
     pub admission_date: Option<String>,
     pub session: Option<String>,
     pub course_name: Option<String>,
+    pub year: Option<String>,
     pub photo_url: Option<String>,
     pub signature_url: Option<String>,
+    pub hostel_room: Option<String>,
+    pub transport_vehicle: Option<String>,
 }
 
 impl CreateStudentPayload {
@@ -159,8 +164,11 @@ pub struct UpdateStudentPayload {
     pub admission_date: Option<String>,
     pub session: Option<String>,
     pub course_name: Option<String>,
+    pub year: Option<String>,
     pub photo_url: Option<String>,
     pub signature_url: Option<String>,
+    pub hostel_room: Option<String>,
+    pub transport_vehicle: Option<String>,
 }
 
 impl UpdateStudentPayload {

@@ -18,10 +18,9 @@ use super::models::*;
 
 pub async fn get_hostel_rooms(
     State(state): State<AppState>,
-    auth_user: AuthUser,
+    _auth_user: AuthUser,
     Query(q): Query<GetHostelRoomsQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    auth_user.authorize_sub_role(&[UserSubRole::HostelManager, UserSubRole::FinanceManager, UserSubRole::TransportManager])?;
 
     let mut sql = r#"
         SELECT hr.id, hr.room_no, hr.block, hr.floor, hr.capacity, hr.room_type,

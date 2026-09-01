@@ -26,6 +26,7 @@ pub async fn library_guard(
 
 pub fn router(state: AppState) -> Router<AppState> {
     let classes_routes = crate::modules::classes::router();
+    let courses_routes = crate::modules::courses::router();
 
     let library_core_routes = Router::new()
         // Stats & Activity
@@ -55,6 +56,7 @@ pub fn router(state: AppState) -> Router<AppState> {
 
     Router::new()
         .nest("/classes", classes_routes)
+        .nest("/courses", courses_routes)
         .nest("/", library_core_routes)
 }
 
