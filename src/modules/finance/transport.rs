@@ -199,6 +199,34 @@ pub async fn update_record(
     if let Some(due_fees) = payload.due_fees { existing.due_fees = due_fees; }
     if let Some(discount) = payload.discount { existing.discount = discount; }
 
+    if let Some(ref sname) = payload.student_name {
+        if !sname.trim().is_empty() && !sname.starts_with("Student STU-") {
+            let _ = sqlx::query("UPDATE students SET name = COALESCE(NULLIF($2, ''), name) WHERE student_id = $1")
+                .bind(&existing.student_id)
+                .bind(sname)
+                .execute(db)
+                .await;
+        }
+    }
+    if let Some(ref cname) = payload.class_name {
+        if !cname.trim().is_empty() {
+            let _ = sqlx::query("UPDATE students SET class_name = COALESCE(NULLIF($2, ''), class_name) WHERE student_id = $1")
+                .bind(&existing.student_id)
+                .bind(cname)
+                .execute(db)
+                .await;
+        }
+    }
+    if let Some(ref crsname) = payload.course_name {
+        if !crsname.trim().is_empty() {
+            let _ = sqlx::query("UPDATE students SET course_name = COALESCE(NULLIF($2, ''), course_name) WHERE student_id = $1")
+                .bind(&existing.student_id)
+                .bind(crsname)
+                .execute(db)
+                .await;
+        }
+    }
+
     if let Some(ref r_date) = payload.receipt_date {
         existing.receipt_date = chrono::NaiveDate::parse_from_str(r_date, "%Y-%m-%d")
             .map_err(|_| AppError::BadRequest("Invalid receipt date format".to_string()))?;

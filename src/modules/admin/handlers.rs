@@ -493,9 +493,6 @@ pub async fn import_students(
         let session = s.session.as_ref()
             .map(|se| se.trim().to_string())
             .filter(|se| !se.is_empty());
-        let course_name = s.course_name.as_ref()
-            .map(|co| co.trim().to_string())
-            .filter(|co| !co.is_empty());
         let admission_no = s.admission_no.as_ref()
             .map(|a| a.trim().to_string())
             .filter(|a| !a.is_empty());
@@ -539,10 +536,24 @@ pub async fn import_students(
             if let Some((official_name,)) = existing_cls {
                 class_name = Some(official_name);
             } else {
-                let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT DO NOTHING")
-                    .bind(cn)
-                    .execute(&state.db)
-                    .await;
+                class_name = Some("".to_string());
+            }
+        }
+
+        let mut course_name = s.course_name.as_ref()
+            .map(|co| co.trim().to_string())
+            .filter(|co| !co.is_empty());
+
+        if let Some(ref cr) = course_name {
+            let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                .bind(cr)
+                .fetch_optional(&state.db)
+                .await
+                .unwrap_or(None);
+            if let Some((official_name,)) = existing_crs {
+                course_name = Some(official_name);
+            } else {
+                course_name = Some("".to_string());
             }
         }
 

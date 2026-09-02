@@ -43,6 +43,8 @@ pub struct FeeRecordWithDetails {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub student_name: String,
     pub class: Option<String>,
+    pub class_name: Option<String>,
+    pub course_name: Option<String>,
     pub total_count: i32,
 }
 
@@ -109,6 +111,9 @@ pub struct GeneralExpenseWithCount {
 #[derive(Debug, Clone, Deserialize)]
 pub struct AddFeeRecordPayload {
     pub student_id: String,
+    pub student_name: Option<String>,
+    pub class_name: Option<String>,
+    pub course_name: Option<String>,
     pub room: Option<String>,
     pub bus_route: Option<String>,
     pub bus_no: Option<String>,
@@ -161,6 +166,9 @@ impl AddFeeRecordPayload {
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateFeeRecordPayload {
     pub student_id: Option<String>,
+    pub student_name: Option<String>,
+    pub class_name: Option<String>,
+    pub course_name: Option<String>,
     pub fee_type: Option<String>,
     pub room: Option<String>,
     pub bus_route: Option<String>,
