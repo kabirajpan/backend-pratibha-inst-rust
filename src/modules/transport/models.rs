@@ -98,7 +98,8 @@ pub struct TransportStudentWithDetails {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub student_name: String,
-    pub class: Option<String>,
+    pub class_name: Option<String>,
+    pub course_name: Option<String>,
     pub total_count: i32,
 }
 

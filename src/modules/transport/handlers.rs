@@ -533,7 +533,9 @@ pub async fn get_transport_students(
 
     let mut sql = r#"
         SELECT ts.id, ts.student_id, ts.vehicle_no, ts.route, ts.pickup_point, ts.fee_amount::float8 AS fee_amount, ts.status, ts.remarks, ts.created_at, ts.updated_at,
-               COALESCE(s.name, ts.student_id) AS student_name, COALESCE(s.class_name, '—') AS class,
+               COALESCE(s.name, ts.student_id) AS student_name,
+               s.class_name AS class_name,
+               s.course_name AS course_name,
                COUNT(*) OVER()::int AS total_count
         FROM transport_students ts
         LEFT JOIN students s ON LOWER(TRIM(s.student_id)) = LOWER(TRIM(ts.student_id))
@@ -653,23 +655,19 @@ pub async fn create_transport_student(
 
     let mut vehicle_no_up = payload.vehicle_no.clone();
 
-    // 2. Verify or auto-register vehicle if provided
+    // 2. Strict verification: vehicle MUST exist in transport fleet registry
     if let Some(ref vehicle_no) = payload.vehicle_no {
-        if !vehicle_no.trim().is_empty() {
-            let v_up = vehicle_no.trim().to_uppercase();
-            let vehicle = sqlx::query("SELECT id FROM vehicles WHERE UPPER(reg_no) = $1")
+        let v_up = vehicle_no.trim().to_uppercase();
+        if !v_up.is_empty() && v_up != "—" {
+            let vehicle_exists = sqlx::query("SELECT id FROM vehicles WHERE UPPER(TRIM(reg_no)) = UPPER(TRIM($1))")
                 .bind(&v_up)
                 .fetch_optional(&state.db)
                 .await?;
-            if vehicle.is_none() {
-                let _ = sqlx::query(
-                    "INSERT INTO vehicles (reg_no, type, capacity, driver, route, status, remarks)
-                     VALUES ($1, 'Bus', 40, '—', 'Campus Route', 'active', 'Auto-created from student registration')
-                     ON CONFLICT (reg_no) DO NOTHING"
-                )
-                .bind(&v_up)
-                .execute(&state.db)
-                .await;
+            if vehicle_exists.is_none() {
+                return Err(AppError::BadRequest(format!(
+                    "Vehicle '{}' is not registered in transport fleet. Please select or register a valid vehicle first.",
+                    v_up
+                )));
             }
             vehicle_no_up = Some(v_up);
         }

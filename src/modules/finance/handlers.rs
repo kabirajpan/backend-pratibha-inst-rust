@@ -187,7 +187,7 @@ pub async fn get_fee_records(
     let mut sql = r#"
         SELECT f.id, f.student_id, f.fee_type, f.room, f.bus_route, f.bus_no, f.receipt_book_no, f.receipt_no, f.receipt_date, f.payment_date,
                f.amount::float8 AS amount, f.utr_no, f.payment_mode, f.due_fees::float8 AS due_fees, f.remarks, f.discount::float8 AS discount, f.created_at,
-               s.name AS student_name, s.class_name AS class, s.class_name AS class_name, s.course_name AS course_name,
+               COALESCE(NULLIF(s.name, ''), f.student_id) AS student_name, s.class_name AS class_name, s.course_name AS course_name,
                COUNT(*) OVER()::int AS total_count
         FROM fee_collections f
         LEFT JOIN students s ON (TRIM(s.student_id) = TRIM(f.student_id) OR s.student_id ILIKE f.student_id)

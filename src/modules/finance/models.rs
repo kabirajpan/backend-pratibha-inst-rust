@@ -42,7 +42,6 @@ pub struct FeeRecordWithDetails {
     pub discount: f64,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub student_name: String,
-    pub class: Option<String>,
     pub class_name: Option<String>,
     pub course_name: Option<String>,
     pub total_count: i32,
@@ -112,8 +111,11 @@ pub struct GeneralExpenseWithCount {
 pub struct AddFeeRecordPayload {
     pub student_id: String,
     pub student_name: Option<String>,
+    pub name: Option<String>,
     pub class_name: Option<String>,
+    pub class: Option<String>,
     pub course_name: Option<String>,
+    pub course: Option<String>,
     pub room: Option<String>,
     pub bus_route: Option<String>,
     pub bus_no: Option<String>,
@@ -130,6 +132,16 @@ pub struct AddFeeRecordPayload {
 }
 
 impl AddFeeRecordPayload {
+    pub fn get_student_name(&self) -> Option<String> {
+        self.student_name.clone().or_else(|| self.name.clone())
+    }
+    pub fn get_class_name(&self) -> Option<String> {
+        self.class_name.clone().or_else(|| self.class.clone())
+    }
+    pub fn get_course_name(&self) -> Option<String> {
+        self.course_name.clone().or_else(|| self.course.clone())
+    }
+
     pub fn validate(&self) -> Result<(), crate::errors::AppError> {
         if self.student_id.trim().is_empty() || self.student_id.len() > 50 {
             return Err(crate::errors::AppError::BadRequest("student_id must be between 1 and 50 characters".to_string()));
@@ -167,8 +179,11 @@ impl AddFeeRecordPayload {
 pub struct UpdateFeeRecordPayload {
     pub student_id: Option<String>,
     pub student_name: Option<String>,
+    pub name: Option<String>,
     pub class_name: Option<String>,
+    pub class: Option<String>,
     pub course_name: Option<String>,
+    pub course: Option<String>,
     pub fee_type: Option<String>,
     pub room: Option<String>,
     pub bus_route: Option<String>,
@@ -186,6 +201,15 @@ pub struct UpdateFeeRecordPayload {
 }
 
 impl UpdateFeeRecordPayload {
+    pub fn get_student_name(&self) -> Option<String> {
+        self.student_name.clone().or_else(|| self.name.clone())
+    }
+    pub fn get_class_name(&self) -> Option<String> {
+        self.class_name.clone().or_else(|| self.class.clone())
+    }
+    pub fn get_course_name(&self) -> Option<String> {
+        self.course_name.clone().or_else(|| self.course.clone())
+    }
     pub fn validate(&self) -> Result<(), crate::errors::AppError> {
         if let Some(ref student_id) = self.student_id {
             if student_id.trim().is_empty() || student_id.len() > 50 {

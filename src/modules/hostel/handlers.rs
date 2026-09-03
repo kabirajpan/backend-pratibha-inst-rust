@@ -62,7 +62,6 @@ pub async fn get_hostel_rooms(
         if status != "All Statuses" {
             sql.push_str(&format!(" AND hr.status = ${idx}"));
             binders.push(status.clone());
-            idx += 1;
         }
     }
 
@@ -215,7 +214,9 @@ pub async fn get_hostel_students(
         SELECT hs.id, hs.student_id, hs.room_no, hs.bed_no, hs.check_in_date,
                hs.fee_amount::float8 AS fee_amount, hs.status, hs.emergency_contact, hs.remarks,
                hs.created_at, hs.updated_at,
-               COALESCE(s.name, hs.student_id) AS student_name, COALESCE(s.class_name, '—') AS class,
+               COALESCE(s.name, hs.student_id) AS student_name,
+               s.class_name AS class_name,
+               s.course_name AS course_name,
                COUNT(*) OVER()::int AS total_count
         FROM hostel_students hs
         LEFT JOIN students s ON LOWER(TRIM(s.student_id)) = LOWER(TRIM(hs.student_id))
@@ -307,15 +308,18 @@ pub async fn create_hostel_student(
 
     let room_no = payload.room_no.trim().to_uppercase();
 
-    // Ensure room exists in hostel_rooms
-    let _ = sqlx::query(
-        "INSERT INTO hostel_rooms (room_no, block, floor, capacity, room_type, fee_per_term, status, remarks)
-         VALUES ($1, 'Main Hostel Block', '1st Floor', 4, 'Non-AC', 5000.00, 'available', 'Auto-created during resident registration')
-         ON CONFLICT (room_no) DO NOTHING"
-    )
-    .bind(&room_no)
-    .execute(&state.db)
-    .await;
+    // Strict verification: room MUST exist in hostel_rooms table
+    let room_exists = sqlx::query("SELECT id FROM hostel_rooms WHERE UPPER(TRIM(room_no)) = UPPER(TRIM($1))")
+        .bind(&room_no)
+        .fetch_optional(&state.db)
+        .await?;
+
+    if room_exists.is_none() {
+        return Err(AppError::BadRequest(format!(
+            "Room '{}' is not registered in hostel room inventory. Please select or register a valid room first.",
+            room_no
+        )));
+    }
 
     let bed_no = payload.bed_no.as_deref().unwrap_or("Bed 1");
     let check_in_date = payload

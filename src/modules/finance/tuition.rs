@@ -39,10 +39,14 @@ pub async fn create_record(
         .await;
     }
 
-    if payload.class_name.is_some() || payload.course_name.is_some() || payload.student_name.is_some() {
-        let name_val = payload.student_name.as_deref().filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
+    let p_name = payload.get_student_name();
+    let p_class = payload.get_class_name();
+    let p_course = payload.get_course_name();
 
-        let class_val = if let Some(ref c) = payload.class_name {
+    if p_class.is_some() || p_course.is_some() || p_name.is_some() {
+        let name_val = p_name.as_deref().filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
+
+        let class_val = if let Some(ref c) = p_class {
             let clean = c.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
                 let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
@@ -57,7 +61,7 @@ pub async fn create_record(
             None
         };
 
-        let course_val = if let Some(ref cr) = payload.course_name {
+        let course_val = if let Some(ref cr) = p_course {
             let clean = cr.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
                 let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
@@ -237,12 +241,12 @@ pub async fn update_record(
         existing.receipt_no = r_no.clone();
     }
 
-    if let Some(fee_type) = payload.fee_type { existing.fee_type = fee_type; }
-    if let Some(room) = payload.room { existing.room = room; }
-    if let Some(receipt_book_no) = payload.receipt_book_no { existing.receipt_book_no = receipt_book_no; }
-    if let Some(remarks) = payload.remarks { existing.remarks = Some(remarks); }
-    if let Some(utr_no) = payload.utr_no { existing.utr_no = utr_no; }
-    if let Some(payment_mode) = payload.payment_mode { existing.payment_mode = payment_mode; }
+    if let Some(ref fee_type) = payload.fee_type { existing.fee_type = fee_type.clone(); }
+    if let Some(ref room) = payload.room { existing.room = room.clone(); }
+    if let Some(ref receipt_book_no) = payload.receipt_book_no { existing.receipt_book_no = receipt_book_no.clone(); }
+    if let Some(ref remarks) = payload.remarks { existing.remarks = Some(remarks.clone()); }
+    if let Some(ref utr_no) = payload.utr_no { existing.utr_no = utr_no.clone(); }
+    if let Some(ref payment_mode) = payload.payment_mode { existing.payment_mode = payment_mode.clone(); }
     if let Some(amount) = payload.amount { existing.amount = amount; }
     if let Some(due_fees) = payload.due_fees { existing.due_fees = due_fees; }
     if let Some(discount) = payload.discount { existing.discount = discount; }
@@ -256,10 +260,14 @@ pub async fn update_record(
             .map_err(|_| AppError::BadRequest("Invalid payment date format".to_string()))?;
     }
 
-    if payload.class_name.is_some() || payload.course_name.is_some() || payload.student_name.is_some() {
-        let name_val = payload.student_name.as_deref().filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
+    let up_name = payload.get_student_name();
+    let up_class = payload.get_class_name();
+    let up_course = payload.get_course_name();
 
-        let class_val = if let Some(ref c) = payload.class_name {
+    if up_class.is_some() || up_course.is_some() || up_name.is_some() {
+        let name_val = up_name.as_deref().filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
+
+        let class_val = if let Some(ref c) = up_class {
             let clean = c.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
                 let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
@@ -274,7 +282,7 @@ pub async fn update_record(
             None
         };
 
-        let course_val = if let Some(ref cr) = payload.course_name {
+        let course_val = if let Some(ref cr) = up_course {
             let clean = cr.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
                 let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
