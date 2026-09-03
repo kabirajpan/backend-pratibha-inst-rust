@@ -39,7 +39,56 @@ pub async fn create_record(
         .await;
     }
 
-    // 2. Receipt No handling: generate fallback if empty/— or check for existing record to update/upsert
+    if payload.class_name.is_some() || payload.course_name.is_some() || payload.student_name.is_some() {
+        let name_val = payload.student_name.as_deref().filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
+
+        let class_val = if let Some(ref c) = payload.class_name {
+            let clean = c.trim();
+            if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+                let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
+                    .bind(clean)
+                    .execute(db)
+                    .await;
+                Some(clean.to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let course_val = if let Some(ref cr) = payload.course_name {
+            let clean = cr.trim();
+            if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+                let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
+                    .bind(clean)
+                    .execute(db)
+                    .await;
+                Some(clean.to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let _ = sqlx::query(
+            r#"
+            UPDATE students
+            SET class_name  = CASE WHEN $1::text IS NOT NULL THEN $1::text ELSE class_name END,
+                course_name = CASE WHEN $2::text IS NOT NULL THEN $2::text ELSE course_name END,
+                name        = CASE WHEN $3::text IS NOT NULL THEN $3::text ELSE name END,
+                updated_at  = now()
+            WHERE TRIM(student_id) = TRIM($4) OR student_id ILIKE $4
+            "#
+        )
+        .bind(class_val.as_deref())
+        .bind(course_val.as_deref())
+        .bind(name_val)
+        .bind(&payload.student_id)
+        .execute(db)
+        .await;
+    }
     let receipt_no = if payload.receipt_no.trim().is_empty() || payload.receipt_no == "—" {
         format!("TR-{}", chrono::Utc::now().timestamp_micros())
     } else {
