@@ -106,6 +106,13 @@ pub async fn create_record(
         .fetch_optional(db)
         .await?;
 
+    if existing_fee.is_some() {
+        return Err(AppError::BadRequest(format!(
+            "Receipt No. '{}' already exists in fee records. Please use a unique receipt number, or use the Edit button on the table row to modify existing records.",
+            receipt_no
+        )));
+    }
+
     let parsed_receipt_date = chrono::NaiveDate::parse_from_str(&payload.receipt_date, "%Y-%m-%d")
         .map_err(|_| AppError::BadRequest("Invalid receipt date format".to_string()))?;
     let parsed_payment_date = chrono::NaiveDate::parse_from_str(&payload.payment_date, "%Y-%m-%d")
@@ -119,71 +126,32 @@ pub async fn create_record(
     let remarks = payload.remarks.as_deref().unwrap_or("—");
     let discount = payload.discount.unwrap_or(0.0);
 
-    let record = if let Some(row) = existing_fee {
-        let existing_id: Uuid = row.get("id");
-        sqlx::query_as::<_, FeeRecord>(
-            r#"
-            UPDATE fee_collections SET
-                student_id = $1,
-                fee_type = $2,
-                room = $3,
-                receipt_book_no = $4,
-                receipt_date = $5,
-                payment_date = $6,
-                amount = $7,
-                utr_no = $8,
-                payment_mode = $9,
-                due_fees = $10,
-                remarks = $11,
-                discount = $12
-            WHERE id = $13
-            RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                      amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
-            "#
-        )
-        .bind(&payload.student_id)
-        .bind(fee_type)
-        .bind(room)
-        .bind(receipt_book_no)
-        .bind(parsed_receipt_date)
-        .bind(parsed_payment_date)
-        .bind(payload.amount)
-        .bind(utr_no)
-        .bind(payment_mode)
-        .bind(due_fees)
-        .bind(remarks)
-        .bind(discount)
-        .bind(existing_id)
-        .fetch_one(db)
-        .await?
-    } else {
-        sqlx::query_as::<_, FeeRecord>(
-            r#"
-            INSERT INTO fee_collections (
-                student_id, fee_type, room, bus_route, bus_no, 
-                receipt_book_no, receipt_no, receipt_date, payment_date, 
-                amount, utr_no, payment_mode, due_fees, remarks, discount
-            ) VALUES ($1, $2, $3, '—', '—', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                      amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
-            "#
-        )
-        .bind(&payload.student_id)
-        .bind(fee_type)
-        .bind(room)
-        .bind(receipt_book_no)
-        .bind(&receipt_no)
-        .bind(parsed_receipt_date)
-        .bind(parsed_payment_date)
-        .bind(payload.amount)
-        .bind(utr_no)
-        .bind(payment_mode)
-        .bind(due_fees)
-        .bind(remarks)
-        .bind(discount)
-        .fetch_one(db)
-        .await?
-    };
+    let record = sqlx::query_as::<_, FeeRecord>(
+        r#"
+        INSERT INTO fee_collections (
+            student_id, fee_type, room, bus_route, bus_no, 
+            receipt_book_no, receipt_no, receipt_date, payment_date, 
+            amount, utr_no, payment_mode, due_fees, remarks, discount
+        ) VALUES ($1, $2, $3, '—', '—', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
+                  amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+        "#
+    )
+    .bind(&payload.student_id)
+    .bind(fee_type)
+    .bind(room)
+    .bind(receipt_book_no)
+    .bind(&receipt_no)
+    .bind(parsed_receipt_date)
+    .bind(parsed_payment_date)
+    .bind(payload.amount)
+    .bind(utr_no)
+    .bind(payment_mode)
+    .bind(due_fees)
+    .bind(remarks)
+    .bind(discount)
+    .fetch_one(db)
+    .await?;
 
     let rec_no = &record.receipt_no;
     let _ = log_audit(
