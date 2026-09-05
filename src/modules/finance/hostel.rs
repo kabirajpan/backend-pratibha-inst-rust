@@ -16,11 +16,6 @@ pub async fn create_record(
 
     if student.is_none() {
         let default_class = "B.Sc. Nursing 1st Year";
-        let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-            .bind(default_class)
-            .execute(db)
-            .await;
-
         let default_dob = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
         let _ = sqlx::query(
             r#"
@@ -50,10 +45,6 @@ pub async fn create_record(
     if let Some(ref cname) = payload.class_name {
         let clean = cname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                .bind(clean)
-                .execute(db)
-                .await;
             let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
                 .bind(&payload.student_id)
                 .bind(clean)
@@ -64,10 +55,6 @@ pub async fn create_record(
     if let Some(ref crsname) = payload.course_name {
         let clean = crsname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-            let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                .bind(clean)
-                .execute(db)
-                .await;
             let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
                 .bind(&payload.student_id)
                 .bind(clean)
@@ -177,10 +164,6 @@ pub async fn update_record(
     if let Some(ref cname) = payload.class_name {
         let clean = cname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                .bind(clean)
-                .execute(db)
-                .await;
             let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
                 .bind(&sid)
                 .bind(clean)
@@ -191,10 +174,6 @@ pub async fn update_record(
     if let Some(ref crsname) = payload.course_name {
         let clean = crsname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-            let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                .bind(clean)
-                .execute(db)
-                .await;
             let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
                 .bind(&sid)
                 .bind(clean)

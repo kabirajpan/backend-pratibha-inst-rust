@@ -42,6 +42,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/members/:id", get(handlers::get_member).patch(handlers::edit_member))
         // Issues
         .route("/issues", get(handlers::get_issues))
+        .route("/issues/:id", patch(handlers::edit_issue).delete(handlers::delete_issue))
         .route("/issue", post(handlers::issue_book))
         .route("/return", post(handlers::return_book))
         .route("/return/import", post(handlers::import_returns))

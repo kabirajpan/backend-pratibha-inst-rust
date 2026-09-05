@@ -67,13 +67,13 @@ impl Config {
             .unwrap_or(587);
 
         let smtp_username = env::var("SMTP_USERNAME")
-            .unwrap_or_else(|_| "pratibha01portal@gmail.com".to_string());
+            .unwrap_or_default();
 
         let smtp_password = env::var("SMTP_PASSWORD")
-            .unwrap_or_else(|_| "pyxuefummpjnqzax".to_string());
+            .unwrap_or_default();
 
         let smtp_from_email = env::var("SMTP_FROM_EMAIL")
-            .unwrap_or_else(|_| "pratibha01portal@gmail.com".to_string());
+            .unwrap_or_default();
 
         let smtp_from_name = env::var("SMTP_FROM_NAME")
             .unwrap_or_else(|_| "Pratibha Institute ERP".to_string());
@@ -84,7 +84,7 @@ impl Config {
             .unwrap_or_else(|_| "fast2sms".to_string());
 
         let sms_api_key = env::var("SMS_API_KEY")
-            .unwrap_or_else(|_| "dcwM9u31s5k0qS7DFEOzvfhxR6m84gXHKrpiTbtQIByJYeZNoPev7Bg1Mtxc9KhJ6PA0fGbHqjlECoUD".to_string());
+            .unwrap_or_default();
 
         let sms_route = env::var("SMS_ROUTE")
             .unwrap_or_else(|_| "q".to_string());

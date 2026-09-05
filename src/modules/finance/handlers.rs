@@ -30,19 +30,38 @@ pub async fn get_fee_records(
     let offset = (page - 1) * limit;
 
     if fee_type == "library" {
+        // Automatically sync and calculate overdue fines in book_issues
+        let _ = sqlx::query(
+            r#"
+            UPDATE book_issues bi
+            SET status = 'overdue',
+                fine_amount = (CURRENT_DATE - bi.due_date) * s.fine_per_day
+            FROM library_settings s
+            WHERE bi.status IN ('issued', 'overdue') AND bi.due_date < CURRENT_DATE
+            "#
+        )
+        .execute(&state.db)
+        .await;
+
         // Run library union query
         let mut sql = r#"
             WITH library_union AS (
-                -- 1. Unpaid fines from book_issues
+                -- 1. Unpaid fines from book_issues (issued/overdue unreturned OR returned with unpaid fine not yet in fee_collections)
                 SELECT 
                     bi.id,
                     m.student_id,
-                    m.name AS student_name,
-                    s.class_name AS class,
+                    COALESCE(s.name, m.name) AS student_name,
+                    COALESCE(s.class_name, m.class, '—') AS class,
+                    COALESCE(s.course_name, '—') AS course,
+                    COALESCE(b.type, 'book') AS resource_category,
+                    COALESCE(b.acc_no, b.sl_no, '—') AS accession_no,
                     b.title AS room,
-                    (CURRENT_DATE - bi.due_date)::int AS overdue_days,
+                    GREATEST(0, (COALESCE(bi.return_date, CURRENT_DATE) - bi.due_date)::int) AS overdue_days,
                     0.00::float8 AS amount,
-                    bi.fine_amount::float8 AS due_fees,
+                    (CASE 
+                        WHEN bi.status = 'returned' THEN bi.fine_amount::float8
+                        ELSE GREATEST(bi.fine_amount::float8, (GREATEST(0, (CURRENT_DATE - bi.due_date)::int) * COALESCE((SELECT fine_per_day FROM library_settings LIMIT 1), 10.0)))::float8
+                    END) AS due_fees,
                     '—' AS payment_mode,
                     bi.remarks,
                     NULL::date AS payment_date,
@@ -55,18 +74,30 @@ pub async fn get_fee_records(
                 JOIN library_members m ON m.id = bi.member_id
                 JOIN books b ON b.id = bi.book_id
                 LEFT JOIN students s ON s.student_id = m.student_id
-                WHERE bi.fine_amount > 0 AND bi.fine_paid = false
+                WHERE bi.fine_paid = false
+                  AND (
+                      (bi.status IN ('issued', 'overdue') AND bi.due_date < CURRENT_DATE)
+                      OR (bi.status = 'returned' AND bi.fine_amount > 0)
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM fee_collections f 
+                      WHERE f.fee_type = 'library' 
+                        AND (f.remarks ILIKE '%' || bi.issue_no || '%' OR (f.student_id = m.student_id AND f.room = b.title))
+                  )
 
                 UNION ALL
 
-                -- 2. Paid fines from fee_collections
+                -- 2. Paid / recorded fines from fee_collections enriched with book & issue details
                 SELECT 
                     f.id,
                     f.student_id,
-                    s.name AS student_name,
-                    s.class_name AS class,
+                    COALESCE(s.name, f.student_id) AS student_name,
+                    COALESCE(lat.class, s.class_name, '—') AS class,
+                    COALESCE(lat.course, s.course_name, '—') AS course,
+                    COALESCE(lat.book_type, 'book') AS resource_category,
+                    COALESCE(lat.acc_no, lat.sl_no, '—') AS accession_no,
                     f.room,
-                    0::int AS overdue_days,
+                    COALESCE(lat.overdue_days, 0)::int AS overdue_days,
                     f.amount::float8 AS amount,
                     f.due_fees::float8 AS due_fees,
                     f.payment_mode,
@@ -78,19 +109,39 @@ pub async fn get_fee_records(
                     f.utr_no,
                     f.created_at
                 FROM fee_collections f
-                JOIN students s ON s.student_id = f.student_id
+                LEFT JOIN students s ON s.student_id = f.student_id
+                LEFT JOIN LATERAL (
+                    SELECT 
+                        b.type AS book_type, 
+                        b.acc_no, 
+                        b.sl_no,
+                        COALESCE(st.class_name, lm.class) AS class,
+                        st.course_name AS course,
+                        GREATEST(0, (COALESCE(i.return_date, i.due_date, CURRENT_DATE) - i.due_date)::int) AS overdue_days
+                    FROM book_issues i
+                    JOIN books b ON b.id = i.book_id
+                    JOIN library_members lm ON lm.id = i.member_id
+                    LEFT JOIN students st ON st.student_id = lm.student_id
+                    WHERE lm.student_id = f.student_id 
+                      AND (f.remarks ILIKE '%' || i.issue_no || '%' OR b.title = f.room)
+                    ORDER BY i.created_at DESC
+                    LIMIT 1
+                ) lat ON true
                 WHERE f.fee_type = 'library'
 
                 UNION ALL
 
-                -- 3. Legacy paid fines from book_issues
+                -- 3. Legacy paid fines in book_issues not in fee_collections
                 SELECT 
                     bi.id,
                     m.student_id,
-                    m.name AS student_name,
-                    s.class_name AS class,
+                    COALESCE(s.name, m.name) AS student_name,
+                    COALESCE(s.class_name, m.class, '—') AS class,
+                    COALESCE(s.course_name, '—') AS course,
+                    COALESCE(b.type, 'book') AS resource_category,
+                    COALESCE(b.acc_no, b.sl_no, '—') AS accession_no,
                     b.title AS room,
-                    0::int AS overdue_days,
+                    GREATEST(0, (COALESCE(bi.return_date, CURRENT_DATE) - bi.due_date)::int) AS overdue_days,
                     bi.fine_amount::float8 AS amount,
                     0.00::float8 AS due_fees,
                     'Cash' AS payment_mode,
@@ -109,9 +160,8 @@ pub async fn get_fee_records(
                   AND bi.fine_paid = true
                   AND NOT EXISTS (
                       SELECT 1 FROM fee_collections f 
-                      WHERE f.student_id = m.student_id 
-                        AND f.fee_type = 'library' 
-                        AND f.room = b.title
+                      WHERE f.fee_type = 'library' 
+                        AND (f.remarks ILIKE '%' || bi.issue_no || '%' OR (f.student_id = m.student_id AND f.room = b.title))
                   )
             )
             SELECT *, COUNT(*) OVER()::int AS total_count 
@@ -267,7 +317,9 @@ pub async fn get_fee_record(
     // Check if ID is in book_issues (library fines unpaid/legacy)
     let lib_issue = sqlx::query_as::<_, LibraryUnionRecord>(
         r#"
-        SELECT bi.id, m.student_id, m.name AS student_name, s.class_name AS class, b.title AS room,
+        SELECT bi.id, m.student_id, m.name AS student_name, s.class_name AS class,
+               s.course_name AS course, COALESCE(b.type, 'book') AS resource_category,
+               COALESCE(b.acc_no, b.sl_no, '—') AS accession_no, b.title AS room,
                0::int AS overdue_days, 0.00::float8 AS amount, bi.fine_amount::float8 AS due_fees,
                '—' AS payment_mode, bi.remarks, NULL::date AS payment_date, NULL::date AS receipt_date,
                '—' AS receipt_no, '—' AS receipt_book_no, '—' AS utr_no, bi.created_at, 1::int AS total_count
@@ -321,11 +373,6 @@ pub async fn create_fee_record(
         // 1. Verify library member/student exists (auto-create baseline student if missing for bulk imports)
         let student_id = &payload.student_id;
         let default_class = "B.Sc. Nursing 1st Year";
-        let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-            .bind(default_class)
-            .execute(&mut *tx)
-            .await;
-
         let default_dob = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
         let _ = sqlx::query(
             r#"
@@ -686,6 +733,24 @@ pub async fn edit_fee_record(
     } else {
         tuition::update_record(&state.db, id, payload).await?
     };
+
+    if existing_fee_type == "library" {
+        let is_waived = record.payment_mode.to_lowercase() == "waived";
+        let is_paid = record.due_fees == 0.0 || is_waived;
+        let _ = sqlx::query(
+            r#"
+            UPDATE book_issues
+            SET fine_paid = $1, updated_at = now()
+            WHERE member_id IN (SELECT id FROM library_members WHERE student_id = $2)
+              AND book_id IN (SELECT id FROM books WHERE title = $3)
+            "#
+        )
+        .bind(is_paid)
+        .bind(&record.student_id)
+        .bind(&record.room)
+        .execute(&state.db)
+        .await;
+    }
 
     Ok(Json(ApiResponse { success: true, data: record }))
 }

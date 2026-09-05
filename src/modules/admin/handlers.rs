@@ -57,9 +57,21 @@ pub async fn get_students(
     }
 
     if let Some(ref class_name) = q.class_name {
-        sql.push_str(&format!(" AND s.class_name = ${idx}"));
-        binders.push(class_name.clone());
-        idx += 1;
+        let clean = class_name.trim();
+        if !clean.is_empty() && clean.to_lowercase() != "all" {
+            sql.push_str(&format!(" AND s.class_name = ${idx}"));
+            binders.push(clean.to_string());
+            idx += 1;
+        }
+    }
+
+    if let Some(ref course_name) = q.course_name {
+        let clean = course_name.trim();
+        if !clean.is_empty() && clean.to_lowercase() != "all" {
+            sql.push_str(&format!(" AND s.course_name = ${idx}"));
+            binders.push(clean.to_string());
+            idx += 1;
+        }
     }
 
     if let Some(ref session) = q.session {
@@ -152,11 +164,21 @@ pub async fn create_student(
             .unwrap_or(None);
         if let Some((official_name,)) = existing_cls {
             class_name = Some(official_name);
-        } else {
-            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT DO NOTHING")
-                .bind(cn)
-                .execute(&state.db)
-                .await;
+        }
+    }
+
+    let mut course_name = payload.course_name.as_ref()
+        .map(|co| co.trim().to_string())
+        .filter(|co| !co.is_empty());
+
+    if let Some(ref co) = course_name {
+        let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+            .bind(co)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or(None);
+        if let Some((official_name,)) = existing_crs {
+            course_name = Some(official_name);
         }
     }
 
@@ -198,7 +220,7 @@ pub async fn create_student(
     .bind(&payload.admission_no)
     .bind(admission_date)
     .bind(&payload.session)
-    .bind(&payload.course_name)
+    .bind(&course_name)
     .bind(&payload.blood_group)
     .bind(&payload.gender)
     .bind(&payload.photo_url)
@@ -352,11 +374,21 @@ pub async fn edit_student(
             .unwrap_or(None);
         if let Some((official_name,)) = existing_cls {
             class_name = Some(official_name);
-        } else {
-            let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT DO NOTHING")
-                .bind(cn)
-                .execute(&state.db)
-                .await;
+        }
+    }
+
+    let mut course_name = payload.course_name.as_ref()
+        .map(|co| co.trim().to_string())
+        .filter(|co| !co.is_empty());
+
+    if let Some(ref co) = course_name {
+        let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+            .bind(co)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or(None);
+        if let Some((official_name,)) = existing_crs {
+            course_name = Some(official_name);
         }
     }
 
@@ -414,7 +446,7 @@ pub async fn edit_student(
     .bind(&payload.admission_no)
     .bind(admission_date)
     .bind(&payload.session)
-    .bind(&payload.course_name)
+    .bind(&course_name)
     .bind(&payload.blood_group)
     .bind(&payload.gender)
     .bind(&payload.photo_url)

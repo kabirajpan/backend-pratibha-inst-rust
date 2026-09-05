@@ -76,6 +76,7 @@ pub struct StudentWithCount {
 pub struct GetStudentsQuery {
     pub search: Option<String>,
     pub class_name: Option<String>,
+    pub course_name: Option<String>,
     pub session: Option<String>,
     pub page: Option<i32>,
     pub limit: Option<i32>,

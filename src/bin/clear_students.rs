@@ -11,13 +11,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = PgPoolOptions::new().max_connections(2).connect(&db_url).await?;
 
     let count_before: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM students").fetch_one(&pool).await?;
+    let student_users_before: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE role = 'student'").fetch_one(&pool).await?;
     println!("Students count before clear: {}", count_before.0);
+    println!("Student user accounts before clear: {}", student_users_before.0);
 
-    sqlx::query("TRUNCATE TABLE students CASCADE").execute(&pool).await?;
+    sqlx::query("TRUNCATE TABLE students, hostel_students, transport_students CASCADE").execute(&pool).await?;
+    sqlx::query("DELETE FROM users WHERE role = 'student'").execute(&pool).await?;
 
     let count_after: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM students").fetch_one(&pool).await?;
+    let student_users_after: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE role = 'student'").fetch_one(&pool).await?;
     println!("Students count after clear: {}", count_after.0);
+    println!("Student user accounts after clear: {}", student_users_after.0);
 
-    println!("SUCCESS: Student register DB cleared.");
+    println!("SUCCESS: Student register, student logins, hostel, and transport DB cleared.");
     Ok(())
 }

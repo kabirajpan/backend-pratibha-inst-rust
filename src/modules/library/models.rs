@@ -57,6 +57,7 @@ pub struct LibraryMember {
     pub user_id: Option<Uuid>,
     pub name: String,
     pub class: Option<String>,
+    pub course: Option<String>,
     pub phone: Option<String>,
     pub status: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -70,6 +71,7 @@ pub struct LibraryMemberWithStats {
     pub user_id: Option<Uuid>,
     pub name: String,
     pub class: Option<String>,
+    pub course: Option<String>,
     pub phone: Option<String>,
     pub status: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -116,10 +118,17 @@ pub struct BookIssueWithDetails {
     pub member_name: String,
     pub student_id: String,
     pub class: Option<String>,
+    pub course: Option<String>,
     pub book_title: String,
     pub acc_no: Option<String>,
     pub book_type: String,
     pub book_sl_no: Option<String>,
+    pub receipt_book_no: Option<String>,
+    pub receipt_no: Option<String>,
+    pub receipt_date: Option<chrono::NaiveDate>,
+    pub payment_date: Option<chrono::NaiveDate>,
+    pub payment_mode: Option<String>,
+    pub utr_no: Option<String>,
     pub total_count: i32,
 }
 
@@ -258,6 +267,7 @@ pub struct AddMemberPayload {
     pub student_id: String,
     pub name: String,
     pub class: Option<String>,
+    pub course: Option<String>,
     pub phone: Option<String>,
     #[serde(rename = "user_id")]
     pub user_id: Option<Uuid>,
@@ -279,6 +289,7 @@ impl AddMemberPayload {
 pub struct UpdateMemberPayload {
     pub name: Option<String>,
     pub class: Option<String>,
+    pub course: Option<String>,
     pub phone: Option<String>,
     pub status: Option<String>,
 }
@@ -330,6 +341,51 @@ pub struct ReturnBookPayload {
     #[serde(rename = "fine_paid", default)]
     pub fine_paid: bool,
     pub remarks: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateIssuePayload {
+    pub issue_date: Option<String>,
+    pub due_date: Option<String>,
+    pub return_date: Option<String>,
+    pub status: Option<String>,
+    pub fine_amount: Option<f64>,
+    pub fine_paid: Option<bool>,
+    pub payment_mode: Option<String>,
+    pub utr_no: Option<String>,
+    pub amount: Option<f64>,
+    pub due_fees: Option<f64>,
+    pub receipt_book_no: Option<String>,
+    pub receipt_no: Option<String>,
+    pub receipt_date: Option<String>,
+    pub payment_date: Option<String>,
+    pub remarks: Option<String>,
+}
+
+impl UpdateIssuePayload {
+    pub fn validate(&self) -> Result<(), crate::errors::AppError> {
+        if let Some(ref d) = self.issue_date {
+            chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                .map_err(|_| crate::errors::AppError::BadRequest("issue_date must be YYYY-MM-DD".to_string()))?;
+        }
+        if let Some(ref d) = self.due_date {
+            chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                .map_err(|_| crate::errors::AppError::BadRequest("due_date must be YYYY-MM-DD".to_string()))?;
+        }
+        if let Some(ref d) = self.return_date {
+            if !d.is_empty() && d != "—" && d != "-" {
+                chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                    .map_err(|_| crate::errors::AppError::BadRequest("return_date must be YYYY-MM-DD".to_string()))?;
+            }
+        }
+        if let Some(ref status) = self.status {
+            let s = status.to_lowercase();
+            if s != "issued" && s != "returned" && s != "overdue" {
+                return Err(crate::errors::AppError::BadRequest("Invalid issue status".to_string()));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -388,6 +444,7 @@ pub struct ImportedMember {
     pub student_id: String,
     pub name: String,
     pub class: Option<String>,
+    pub course: Option<String>,
     pub phone: Option<String>,
     pub status: Option<String>,
 }

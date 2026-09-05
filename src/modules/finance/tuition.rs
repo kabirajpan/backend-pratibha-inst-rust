@@ -17,11 +17,6 @@ pub async fn create_record(
 
     if student.is_none() {
         let default_class = "B.Sc. Nursing 1st Year";
-        let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-            .bind(default_class)
-            .execute(db)
-            .await;
-
         let default_dob = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
         let _ = sqlx::query(
             r#"
@@ -49,10 +44,6 @@ pub async fn create_record(
         let class_val = if let Some(ref c) = p_class {
             let clean = c.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                    .bind(clean)
-                    .execute(db)
-                    .await;
                 Some(clean.to_string())
             } else {
                 None
@@ -64,10 +55,6 @@ pub async fn create_record(
         let course_val = if let Some(ref cr) = p_course {
             let clean = cr.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                    .bind(clean)
-                    .execute(db)
-                    .await;
                 Some(clean.to_string())
             } else {
                 None
@@ -238,10 +225,6 @@ pub async fn update_record(
         let class_val = if let Some(ref c) = up_class {
             let clean = c.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                    .bind(clean)
-                    .execute(db)
-                    .await;
                 Some(clean.to_string())
             } else {
                 None
@@ -253,10 +236,6 @@ pub async fn update_record(
         let course_val = if let Some(ref cr) = up_course {
             let clean = cr.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING")
-                    .bind(clean)
-                    .execute(db)
-                    .await;
                 Some(clean.to_string())
             } else {
                 None

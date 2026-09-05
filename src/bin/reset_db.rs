@@ -26,23 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("Cleared classes, courses, students, facility allotments, and fee records.");
 
-    // Seed standard classes & courses
-    let classes_to_seed = ["class 10", "class 9", "class 8", "B.Sc. Nursing 1st Year"];
-    for c in &classes_to_seed {
-        let _ = sqlx::query("INSERT INTO classes (name) VALUES ($1) ON CONFLICT DO NOTHING")
-            .bind(c)
-            .execute(&pool)
-            .await;
-    }
-
-    let courses_to_seed = ["Science", "Math", "History"];
-    for crs in &courses_to_seed {
-        let _ = sqlx::query("INSERT INTO courses (name) VALUES ($1) ON CONFLICT DO NOTHING")
-            .bind(crs)
-            .execute(&pool)
-            .await;
-    }
-    println!("Seeded standard classes and courses.");
+    // No hardcoded dummy courses or classes seeded — all courses and classes must be created explicitly by administrators
+    println!("Database tables reset.");
 
     // 2. Delete ONLY student user accounts, keeping Admin/Staff credentials safe
     let user_res = sqlx::query("DELETE FROM users WHERE role::text = 'student'")

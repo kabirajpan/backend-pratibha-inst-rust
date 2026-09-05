@@ -346,11 +346,15 @@ pub async fn get_members(
     let offset = (page - 1) * limit;
 
     let mut sql = r#"
-        SELECT m.id, m.student_id, m.user_id, m.name, m.class, m.phone, m.status, m.created_at, m.updated_at,
+        SELECT m.id, m.student_id, m.user_id, m.name,
+            COALESCE(NULLIF(m.class, ''), s.class_name, '—') AS class,
+            COALESCE(NULLIF(m.course, ''), s.course_name, '—') AS course,
+            m.phone, m.status, m.created_at, m.updated_at,
             COUNT(CASE WHEN bi.status IN ('issued','overdue') THEN 1 END)::int8 AS currently_issued,
             COUNT(bi.id)::int8 AS total_issued,
             COUNT(*) OVER()::int AS total_count
         FROM library_members m
+        LEFT JOIN students s ON LOWER(s.student_id) = LOWER(m.student_id)
         LEFT JOIN book_issues bi ON bi.member_id = m.id
     "#
     .to_string();
@@ -361,14 +365,14 @@ pub async fn get_members(
     if let Some(ref search) = query_params.search {
         let search_term = format!("%{}%", search);
         sql.push_str(&format!(
-            " WHERE m.name ILIKE ${0} OR m.student_id ILIKE ${0} OR m.phone ILIKE ${0}",
+            " WHERE m.name ILIKE ${0} OR m.student_id ILIKE ${0} OR m.phone ILIKE ${0} OR m.course ILIKE ${0} OR s.course_name ILIKE ${0} OR m.class ILIKE ${0} OR s.class_name ILIKE ${0}",
             count_idx
         ));
         binders.push(search_term);
         count_idx += 1;
     }
 
-    sql.push_str(" GROUP BY m.id ORDER BY m.created_at DESC");
+    sql.push_str(" GROUP BY m.id, m.student_id, m.user_id, m.name, m.class, m.course, s.class_name, s.course_name, m.phone, m.status, m.created_at, m.updated_at ORDER BY m.created_at DESC");
     sql.push_str(&format!(" LIMIT ${} OFFSET ${}", count_idx, count_idx + 1));
 
     let mut db_query = sqlx::query_as::<_, LibraryMemberWithStats>(&sql);
@@ -398,14 +402,18 @@ pub async fn get_member(
 ) -> Result<impl IntoResponse, AppError> {
     let member = sqlx::query_as::<_, LibraryMemberWithStats>(
         r#"
-        SELECT m.id, m.student_id, m.user_id, m.name, m.class, m.phone, m.status, m.created_at, m.updated_at,
+        SELECT m.id, m.student_id, m.user_id, m.name,
+            COALESCE(NULLIF(m.class, ''), s.class_name, '—') AS class,
+            COALESCE(NULLIF(m.course, ''), s.course_name, '—') AS course,
+            m.phone, m.status, m.created_at, m.updated_at,
             COUNT(CASE WHEN bi.status IN ('issued','overdue') THEN 1 END)::int8 AS currently_issued,
             COUNT(bi.id)::int8 AS total_issued,
             1::int AS total_count
         FROM library_members m
+        LEFT JOIN students s ON LOWER(s.student_id) = LOWER(m.student_id)
         LEFT JOIN book_issues bi ON bi.member_id = m.id
         WHERE m.id = $1
-        GROUP BY m.id
+        GROUP BY m.id, m.student_id, m.user_id, m.name, m.class, m.course, s.class_name, s.course_name, m.phone, m.status, m.created_at, m.updated_at
         "#
     )
     .bind(id)
@@ -438,14 +446,15 @@ pub async fn create_member(
 
     let member = sqlx::query_as::<_, LibraryMember>(
         r#"
-        INSERT INTO library_members (student_id, name, class, phone, user_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO library_members (student_id, name, class, course, phone, user_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
         "#
     )
     .bind(&payload.student_id)
     .bind(&payload.name)
     .bind(&payload.class)
+    .bind(&payload.course)
     .bind(&payload.phone)
     .bind(payload.user_id)
     .fetch_one(&state.db)
@@ -479,19 +488,21 @@ pub async fn edit_member(
 
     if let Some(name) = payload.name { existing.name = name; }
     if let Some(class) = payload.class { existing.class = Some(class); }
+    if let Some(course) = payload.course { existing.course = Some(course); }
     if let Some(phone) = payload.phone { existing.phone = Some(phone); }
     if let Some(status) = payload.status { existing.status = status; }
 
     let updated_member = sqlx::query_as::<_, LibraryMember>(
         r#"
         UPDATE library_members
-        SET name = $1, class = $2, phone = $3, status = $4, updated_at = now()
-        WHERE id = $5
+        SET name = $1, class = $2, course = $3, phone = $4, status = $5, updated_at = now()
+        WHERE id = $6
         RETURNING *
         "#
     )
     .bind(existing.name)
     .bind(existing.class)
+    .bind(existing.course)
     .bind(existing.phone)
     .bind(existing.status)
     .bind(id)
@@ -518,12 +529,23 @@ pub async fn get_issues(
 
     let mut sql = r#"
         SELECT bi.id, bi.issue_no, bi.member_id, bi.book_id, bi.issued_by, bi.issue_date, bi.due_date, bi.return_date, bi.fine_amount::float8 AS fine_amount, bi.fine_paid, bi.status, bi.remarks, bi.created_at, bi.updated_at,
-            m.name AS member_name, m.student_id, m.class,
+            m.name AS member_name, m.student_id,
+            COALESCE(NULLIF(m.class, ''), s.class_name, '—') AS class,
+            COALESCE(NULLIF(m.course, ''), s.course_name, '—') AS course,
             b.title AS book_title, b.acc_no, b.type AS book_type, b.sl_no AS book_sl_no,
+            fc.receipt_book_no, fc.receipt_no, fc.receipt_date, fc.payment_date, fc.payment_mode, fc.utr_no,
             COUNT(*) OVER()::int AS total_count
         FROM book_issues bi
         JOIN library_members m ON m.id = bi.member_id
+        LEFT JOIN students s ON LOWER(TRIM(s.student_id)) = LOWER(TRIM(m.student_id))
         JOIN books b ON b.id = bi.book_id
+        LEFT JOIN LATERAL (
+            SELECT receipt_book_no, receipt_no, receipt_date, payment_date, payment_mode, utr_no
+            FROM fee_collections
+            WHERE fee_type = 'library' AND (receipt_no = bi.issue_no OR remarks ILIKE '%' || bi.issue_no || '%' OR room = b.title)
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) fc ON true
     "#
     .to_string();
 
@@ -608,7 +630,7 @@ pub async fn issue_book(
             .fetch_optional(&state.db)
             .await?
     } else {
-        sqlx::query_as::<_, LibraryMember>("SELECT * FROM library_members WHERE student_id = $1")
+        sqlx::query_as::<_, LibraryMember>("SELECT * FROM library_members WHERE LOWER(TRIM(student_id)) = LOWER(TRIM($1))")
             .bind(&payload.member_id)
             .fetch_optional(&state.db)
             .await?
@@ -618,12 +640,12 @@ pub async fn issue_book(
     if member.is_none() {
         let student = if is_uuid {
             let uid = Uuid::parse_str(&payload.member_id).unwrap();
-            sqlx::query("SELECT student_id, name, class_name, phone FROM students WHERE id = $1")
+            sqlx::query("SELECT student_id, name, class_name, course_name, phone FROM students WHERE id = $1")
                 .bind(uid)
                 .fetch_optional(&state.db)
                 .await?
         } else {
-            sqlx::query("SELECT student_id, name, class_name, phone FROM students WHERE student_id = $1")
+            sqlx::query("SELECT student_id, name, class_name, course_name, phone FROM students WHERE LOWER(TRIM(student_id)) = LOWER(TRIM($1))")
                 .bind(&payload.member_id)
                 .fetch_optional(&state.db)
                 .await?
@@ -636,23 +658,45 @@ pub async fn issue_book(
         let student_id: String = student_row.get("student_id");
         let name: String = student_row.get("name");
         let class_name: Option<String> = student_row.get("class_name");
+        let course_name: Option<String> = student_row.get("course_name");
         let phone: Option<String> = student_row.get("phone");
 
         let new_member = sqlx::query_as::<_, LibraryMember>(
             r#"
-            INSERT INTO library_members (student_id, name, class, phone, status)
-            VALUES ($1, $2, $3, $4, 'active')
+            INSERT INTO library_members (student_id, name, class, course, phone, status)
+            VALUES ($1, $2, $3, $4, $5, 'active')
             RETURNING *
             "#
         )
         .bind(student_id)
         .bind(name)
         .bind(class_name)
+        .bind(course_name)
         .bind(phone)
         .fetch_one(&state.db)
         .await?;
 
         member = Some(new_member);
+    } else if let Some(ref m) = member {
+        // If existing member has missing class or course, sync from students
+        if m.class.is_none() || m.course.is_none() {
+            let stu_opt = sqlx::query("SELECT class_name, course_name FROM students WHERE LOWER(TRIM(student_id)) = LOWER(TRIM($1))")
+                .bind(&m.student_id)
+                .fetch_optional(&state.db)
+                .await?;
+            if let Some(s) = stu_opt {
+                let cl: Option<String> = s.get("class_name");
+                let cr: Option<String> = s.get("course_name");
+                let _ = sqlx::query(
+                    "UPDATE library_members SET class = COALESCE(NULLIF(class, ''), $1), course = COALESCE(NULLIF(course, ''), $2) WHERE id = $3"
+                )
+                .bind(cl)
+                .bind(cr)
+                .bind(m.id)
+                .execute(&state.db)
+                .await;
+            }
+        }
     }
 
     let member = member.unwrap();
@@ -908,6 +952,279 @@ pub async fn update_fine(
     Ok(Json(ApiResponse {
         success: true,
         data: updated_issue,
+    }))
+}
+
+pub async fn edit_issue(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<UpdateIssuePayload>,
+) -> Result<impl IntoResponse, AppError> {
+    payload.validate()?;
+
+    let existing = sqlx::query_as::<_, BookIssue>(
+        r#"
+        SELECT id, issue_no, member_id, book_id, issued_by, issue_date, due_date, return_date, fine_amount::float8 AS fine_amount, fine_paid, status, remarks, created_at, updated_at
+        FROM book_issues
+        WHERE id = $1
+        "#
+    )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let existing = existing.ok_or_else(|| AppError::NotFound("Book issue not found".to_string()))?;
+
+    let issue_date = if let Some(ref d) = payload.issue_date {
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .map_err(|_| AppError::BadRequest("Invalid issue_date format (YYYY-MM-DD)".to_string()))?
+    } else {
+        existing.issue_date
+    };
+
+    let due_date = if let Some(ref d) = payload.due_date {
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .map_err(|_| AppError::BadRequest("Invalid due_date format (YYYY-MM-DD)".to_string()))?
+    } else {
+        existing.due_date
+    };
+
+    let return_date = if let Some(ref d) = payload.return_date {
+        if d.is_empty() || d == "—" || d == "-" {
+            None
+        } else {
+            Some(
+                chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                    .map_err(|_| AppError::BadRequest("Invalid return_date format (YYYY-MM-DD)".to_string()))?
+            )
+        }
+    } else {
+        existing.return_date
+    };
+
+    let status = payload.status.unwrap_or(existing.status);
+    let fine_amount = payload.fine_amount.unwrap_or(existing.fine_amount);
+    let mut fine_paid = payload.fine_paid.unwrap_or(existing.fine_paid);
+    let remarks = payload.remarks.unwrap_or(existing.remarks);
+
+    if payload.payment_mode.as_deref() == Some("Waived")
+        || payload.due_fees == Some(0.0)
+        || (payload.amount.unwrap_or(0.0) >= fine_amount && fine_amount > 0.0)
+    {
+        fine_paid = true;
+    }
+
+    let updated = sqlx::query_as::<_, BookIssue>(
+        r#"
+        UPDATE book_issues
+        SET issue_date = $2, due_date = $3, return_date = $4, status = $5,
+            fine_amount = $6, fine_paid = $7, remarks = $8, updated_at = now()
+        WHERE id = $1
+        RETURNING id, issue_no, member_id, book_id, issued_by, issue_date, due_date, return_date, fine_amount::float8 AS fine_amount, fine_paid, status, remarks, created_at, updated_at
+        "#
+    )
+    .bind(id)
+    .bind(issue_date)
+    .bind(due_date)
+    .bind(return_date)
+    .bind(status)
+    .bind(fine_amount)
+    .bind(fine_paid)
+    .bind(&remarks)
+    .fetch_one(&state.db)
+    .await?;
+
+    log_activity(
+        &state.db,
+        Some(auth_user.id),
+        "ISSUE_UPDATED",
+        "book_issue",
+        Some(id),
+        Some(json!({ "issue_no": updated.issue_no })),
+    )
+    .await?;
+
+    // Keep fee_collections in sync
+    if fine_paid || fine_amount > 0.0 || payload.payment_mode.is_some() || payload.due_fees.is_some() {
+        let member_info = sqlx::query(
+            r#"
+            SELECT m.student_id, b.title AS book_title 
+            FROM book_issues bi 
+            JOIN library_members m ON m.id = bi.member_id 
+            JOIN books b ON b.id = bi.book_id 
+            WHERE bi.id = $1
+            "#
+        )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?;
+
+        if let Some(row) = member_info {
+            let student_id: String = row.get("student_id");
+            let book_title: String = row.get("book_title");
+            let pay_mode = payload.payment_mode.unwrap_or_else(|| (if fine_paid { "Cash".to_string() } else { "—".to_string() }));
+            let is_waived = pay_mode.to_lowercase() == "waived";
+            let amt_paid = if is_waived { 0.0 } else { payload.amount.unwrap_or(if fine_paid { fine_amount } else { 0.0 }) };
+            let due = if is_waived { 0.0 } else { payload.due_fees.unwrap_or(if fine_paid { 0.0 } else { fine_amount }) };
+            let utr = payload.utr_no.unwrap_or_else(|| "—".to_string());
+            let receipt_book = payload.receipt_book_no.unwrap_or_else(|| "—".to_string());
+            let receipt = payload.receipt_no.unwrap_or_else(|| format!("LIB-COLL-{}", Utc::now().timestamp_millis()));
+            let receipt_dt = payload.receipt_date.and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok()).unwrap_or_else(|| Utc::now().date_naive());
+            let pay_dt = payload.payment_date.and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok()).unwrap_or_else(|| Utc::now().date_naive());
+            let remark_str = if is_waived { "Waived by Librarian".to_string() } else { remarks.clone() };
+
+            let existing_fee = sqlx::query(
+                r#"
+                SELECT id FROM fee_collections 
+                WHERE fee_type = 'library' 
+                  AND (
+                      receipt_no = $1 
+                      OR remarks ILIKE $2 
+                      OR (student_id = $3 AND room = $4)
+                  )
+                ORDER BY created_at DESC 
+                LIMIT 1
+                "#
+            )
+            .bind(&existing.issue_no)
+            .bind(format!("%{}%", existing.issue_no))
+            .bind(&student_id)
+            .bind(&book_title)
+            .fetch_optional(&state.db)
+            .await?;
+
+            if fine_amount == 0.0 && !is_waived {
+                // If fine was reset to 0 (returned on time), remove orphan fee_collection
+                if let Some(f) = existing_fee {
+                    let fid: Uuid = f.get("id");
+                    let _ = sqlx::query("DELETE FROM fee_collections WHERE id = $1")
+                        .bind(fid)
+                        .execute(&state.db)
+                        .await;
+                }
+            } else {
+                let remark_tagged = if remark_str.contains(&existing.issue_no) {
+                    remark_str
+                } else {
+                    format!("{} [{}]", remark_str, existing.issue_no)
+                };
+
+                if let Some(f) = existing_fee {
+                    let fid: Uuid = f.get("id");
+                    let _ = sqlx::query(
+                        r#"
+                        UPDATE fee_collections
+                        SET amount = $2, due_fees = $3, payment_mode = $4, utr_no = $5,
+                            receipt_book_no = $6, receipt_no = $7, receipt_date = $8, payment_date = $9,
+                            remarks = $10
+                        WHERE id = $1
+                        "#
+                    )
+                    .bind(fid)
+                    .bind(amt_paid)
+                    .bind(due)
+                    .bind(&pay_mode)
+                    .bind(&utr)
+                    .bind(&receipt_book)
+                    .bind(&receipt)
+                    .bind(receipt_dt)
+                    .bind(pay_dt)
+                    .bind(&remark_tagged)
+                    .execute(&state.db)
+                    .await;
+                } else if fine_paid || amt_paid > 0.0 || is_waived {
+                    let _ = sqlx::query(
+                        r#"
+                        INSERT INTO fee_collections (
+                            student_id, fee_type, room, bus_route, bus_no,
+                            receipt_book_no, receipt_no, receipt_date, payment_date,
+                            amount, utr_no, payment_mode, due_fees, remarks, discount
+                        ) VALUES ($1, 'library', $2, '—', '—', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0.00)
+                        "#
+                    )
+                    .bind(&student_id)
+                    .bind(&book_title)
+                    .bind(&receipt_book)
+                    .bind(&receipt)
+                    .bind(receipt_dt)
+                    .bind(pay_dt)
+                    .bind(amt_paid)
+                    .bind(&utr)
+                    .bind(&pay_mode)
+                    .bind(due)
+                    .bind(&remark_tagged)
+                    .execute(&state.db)
+                    .await;
+                }
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: updated,
+    }))
+}
+
+pub async fn delete_issue(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let existing = sqlx::query_as::<_, BookIssue>(
+        r#"
+        SELECT id, issue_no, member_id, book_id, issued_by, issue_date, due_date, return_date, fine_amount::float8 AS fine_amount, fine_paid, status, remarks, created_at, updated_at
+        FROM book_issues
+        WHERE id = $1
+        "#
+    )
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?;
+
+    let existing = existing.ok_or_else(|| AppError::NotFound("Book issue not found".to_string()))?;
+
+    // Also delete any associated fee_collections if present
+    let _ = sqlx::query(
+        r#"
+        DELETE FROM fee_collections 
+        WHERE fee_type = 'library' 
+          AND (
+              receipt_no = $1 
+              OR remarks ILIKE $2
+              OR (
+                  student_id = (SELECT student_id FROM library_members WHERE id = $3)
+                  AND room = (SELECT title FROM books WHERE id = $4)
+              )
+          )
+        "#
+    )
+    .bind(&existing.issue_no)
+    .bind(format!("%{}%", existing.issue_no))
+    .bind(existing.member_id)
+    .bind(existing.book_id)
+    .execute(&state.db)
+    .await;
+
+    sqlx::query("DELETE FROM book_issues WHERE id = $1")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
+
+    log_activity(
+        &state.db,
+        Some(auth_user.id),
+        "ISSUE_DELETED",
+        "book_issue",
+        Some(id),
+        Some(json!({ "issue_no": existing.issue_no })),
+    )
+    .await?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: json!({ "id": id, "deleted": true }),
     }))
 }
 
@@ -1172,7 +1489,7 @@ pub async fn import_members(
             sqlx::query_as::<_, LibraryMember>(
                 r#"
                 UPDATE library_members
-                SET name = $2, class = $3, phone = $4, status = $5, updated_at = now()
+                SET name = $2, class = $3, course = $4, phone = $5, status = $6, updated_at = now()
                 WHERE student_id = $1
                 RETURNING *
                 "#
@@ -1180,6 +1497,7 @@ pub async fn import_members(
             .bind(&m.student_id)
             .bind(&m.name)
             .bind(&m.class)
+            .bind(&m.course)
             .bind(&m.phone)
             .bind(&status)
             .fetch_one(&state.db)
@@ -1187,14 +1505,15 @@ pub async fn import_members(
         } else {
             sqlx::query_as::<_, LibraryMember>(
                 r#"
-                INSERT INTO library_members (student_id, name, class, phone, status)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO library_members (student_id, name, class, course, phone, status)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING *
                 "#
             )
             .bind(&m.student_id)
             .bind(&m.name)
             .bind(&m.class)
+            .bind(&m.course)
             .bind(&m.phone)
             .bind(&status)
             .fetch_one(&state.db)
