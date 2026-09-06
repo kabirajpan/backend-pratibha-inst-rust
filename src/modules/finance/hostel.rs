@@ -52,14 +52,25 @@ pub async fn create_record(
             let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                 .bind(clean)
                 .fetch_optional(db)
-                .await
-                .unwrap_or(None);
-            let valid_class = existing_cls.map(|(n,)| n).unwrap_or_default();
-            let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
-                .bind(&payload.student_id)
-                .bind(valid_class)
-                .execute(db)
-                .await;
+                .await?;
+            if let Some((official_name,)) = existing_cls {
+                let cur_cls: Option<(Option<String>,)> = sqlx::query_as("SELECT class_name FROM students WHERE student_id = $1")
+                    .bind(&payload.student_id)
+                    .fetch_optional(db)
+                    .await?;
+                let cur = cur_cls.and_then(|(c,)| c).unwrap_or_default();
+                if cur.trim().is_empty() {
+                    let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
+                        .bind(&payload.student_id)
+                        .bind(official_name)
+                        .execute(db)
+                        .await;
+                }
+            } else {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid Class Name '{}'. It does not exist in master classes. Please select a valid class option.", clean
+                )));
+            }
         }
     }
     if let Some(ref crsname) = payload.course_name {
@@ -68,14 +79,25 @@ pub async fn create_record(
             let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                 .bind(clean)
                 .fetch_optional(db)
-                .await
-                .unwrap_or(None);
-            let valid_course = existing_crs.map(|(n,)| n).unwrap_or_default();
-            let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
-                .bind(&payload.student_id)
-                .bind(valid_course)
-                .execute(db)
-                .await;
+                .await?;
+            if let Some((official_name,)) = existing_crs {
+                let cur_crs: Option<(Option<String>,)> = sqlx::query_as("SELECT course_name FROM students WHERE student_id = $1")
+                    .bind(&payload.student_id)
+                    .fetch_optional(db)
+                    .await?;
+                let cur = cur_crs.and_then(|(c,)| c).unwrap_or_default();
+                if cur.trim().is_empty() {
+                    let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
+                        .bind(&payload.student_id)
+                        .bind(official_name)
+                        .execute(db)
+                        .await;
+                }
+            } else {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid Course Name '{}'. It does not exist in master courses. Please select a valid course option.", clean
+                )));
+            }
         }
     }
 
@@ -183,14 +205,25 @@ pub async fn update_record(
             let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                 .bind(clean)
                 .fetch_optional(db)
-                .await
-                .unwrap_or(None);
-            let valid_class = existing_cls.map(|(n,)| n).unwrap_or_default();
-            let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
-                .bind(&sid)
-                .bind(valid_class)
-                .execute(db)
-                .await;
+                .await?;
+            if let Some((official_name,)) = existing_cls {
+                let cur_cls: Option<(Option<String>,)> = sqlx::query_as("SELECT class_name FROM students WHERE student_id = $1")
+                    .bind(&sid)
+                    .fetch_optional(db)
+                    .await?;
+                let cur = cur_cls.and_then(|(c,)| c).unwrap_or_default();
+                if cur.trim().is_empty() {
+                    let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
+                        .bind(&sid)
+                        .bind(official_name)
+                        .execute(db)
+                        .await;
+                }
+            } else {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid Class Name '{}'. It does not exist in master classes. Please select a valid class option.", clean
+                )));
+            }
         }
     }
     if let Some(ref crsname) = payload.course_name {
@@ -199,14 +232,25 @@ pub async fn update_record(
             let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                 .bind(clean)
                 .fetch_optional(db)
-                .await
-                .unwrap_or(None);
-            let valid_course = existing_crs.map(|(n,)| n).unwrap_or_default();
-            let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
-                .bind(&sid)
-                .bind(valid_course)
-                .execute(db)
-                .await;
+                .await?;
+            if let Some((official_name,)) = existing_crs {
+                let cur_crs: Option<(Option<String>,)> = sqlx::query_as("SELECT course_name FROM students WHERE student_id = $1")
+                    .bind(&sid)
+                    .fetch_optional(db)
+                    .await?;
+                let cur = cur_crs.and_then(|(c,)| c).unwrap_or_default();
+                if cur.trim().is_empty() {
+                    let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
+                        .bind(&sid)
+                        .bind(official_name)
+                        .execute(db)
+                        .await;
+                }
+            } else {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid Course Name '{}'. It does not exist in master courses. Please select a valid course option.", clean
+                )));
+            }
         }
     }
 

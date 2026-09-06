@@ -51,12 +51,13 @@ pub async fn create_record(
                 let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                     .bind(clean)
                     .fetch_optional(db)
-                    .await
-                    .unwrap_or(None);
+                    .await?;
                 if let Some((official_name,)) = existing_cls {
                     Some(official_name)
                 } else {
-                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad class
+                    return Err(AppError::BadRequest(format!(
+                        "Invalid Class Name '{}'. It does not exist in master classes. Please select a valid class option.", clean
+                    )));
                 }
             } else {
                 None
@@ -71,12 +72,13 @@ pub async fn create_record(
                 let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                     .bind(clean)
                     .fetch_optional(db)
-                    .await
-                    .unwrap_or(None);
+                    .await?;
                 if let Some((official_name,)) = existing_crs {
                     Some(official_name)
                 } else {
-                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad course
+                    return Err(AppError::BadRequest(format!(
+                        "Invalid Course Name '{}'. It does not exist in master courses. Please select a valid course option.", clean
+                    )));
                 }
             } else {
                 None
@@ -85,22 +87,40 @@ pub async fn create_record(
             None
         };
 
-        let _ = sqlx::query(
-            r#"
-            UPDATE students
-            SET class_name  = CASE WHEN $1::text IS NOT NULL THEN $1::text ELSE class_name END,
-                course_name = CASE WHEN $2::text IS NOT NULL THEN $2::text ELSE course_name END,
-                name        = CASE WHEN $3::text IS NOT NULL THEN $3::text ELSE name END,
-                updated_at  = now()
-            WHERE TRIM(student_id) = TRIM($4) OR student_id ILIKE $4
-            "#
+        // Protect registered student master data: do NOT overwrite registered class/course if already present
+        let existing_student: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT class_name, course_name FROM students WHERE TRIM(student_id) = TRIM($1) OR student_id ILIKE $1 LIMIT 1"
         )
-        .bind(class_val.as_deref())
-        .bind(course_val.as_deref())
-        .bind(name_val)
         .bind(&payload.student_id)
-        .execute(db)
-        .await;
+        .fetch_optional(db)
+        .await?;
+
+        let (final_class_update, final_course_update) = if let Some((cur_cls, cur_crs)) = existing_student {
+            let update_cls = if cur_cls.as_deref().unwrap_or("").trim().is_empty() { class_val } else { None };
+            let update_crs = if cur_crs.as_deref().unwrap_or("").trim().is_empty() { course_val } else { None };
+            (update_cls, update_crs)
+        } else {
+            (class_val, course_val)
+        };
+
+        if final_class_update.is_some() || final_course_update.is_some() || name_val.is_some() {
+            let _ = sqlx::query(
+                r#"
+                UPDATE students
+                SET class_name  = CASE WHEN $1::text IS NOT NULL THEN $1::text ELSE class_name END,
+                    course_name = CASE WHEN $2::text IS NOT NULL THEN $2::text ELSE course_name END,
+                    name        = CASE WHEN $3::text IS NOT NULL THEN $3::text ELSE name END,
+                    updated_at  = now()
+                WHERE TRIM(student_id) = TRIM($4) OR student_id ILIKE $4
+                "#
+            )
+            .bind(final_class_update.as_deref())
+            .bind(final_course_update.as_deref())
+            .bind(name_val)
+            .bind(&payload.student_id)
+            .execute(db)
+            .await;
+        }
     }
 
     // 2. Receipt No handling: generate fallback if empty/— or check for existing record to update/upsert
@@ -250,12 +270,13 @@ pub async fn update_record(
                 let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                     .bind(clean)
                     .fetch_optional(db)
-                    .await
-                    .unwrap_or(None);
+                    .await?;
                 if let Some((official_name,)) = existing_cls {
                     Some(official_name)
                 } else {
-                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad class
+                    return Err(AppError::BadRequest(format!(
+                        "Invalid Class Name '{}'. It does not exist in master classes. Please select a valid class option.", clean
+                    )));
                 }
             } else {
                 None
@@ -270,12 +291,13 @@ pub async fn update_record(
                 let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
                     .bind(clean)
                     .fetch_optional(db)
-                    .await
-                    .unwrap_or(None);
+                    .await?;
                 if let Some((official_name,)) = existing_crs {
                     Some(official_name)
                 } else {
-                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad course
+                    return Err(AppError::BadRequest(format!(
+                        "Invalid Course Name '{}'. It does not exist in master courses. Please select a valid course option.", clean
+                    )));
                 }
             } else {
                 None
@@ -284,22 +306,40 @@ pub async fn update_record(
             None
         };
 
-        let _ = sqlx::query(
-            r#"
-            UPDATE students
-            SET class_name  = CASE WHEN $1::text IS NOT NULL THEN $1::text ELSE class_name END,
-                course_name = CASE WHEN $2::text IS NOT NULL THEN $2::text ELSE course_name END,
-                name        = CASE WHEN $3::text IS NOT NULL THEN $3::text ELSE name END,
-                updated_at  = now()
-            WHERE TRIM(student_id) = TRIM($4) OR student_id ILIKE $4
-            "#
+        // Protect registered student master data: do NOT overwrite registered class/course if already present
+        let existing_student: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT class_name, course_name FROM students WHERE TRIM(student_id) = TRIM($1) OR student_id ILIKE $1 LIMIT 1"
         )
-        .bind(class_val.as_deref())
-        .bind(course_val.as_deref())
-        .bind(name_val)
         .bind(&existing.student_id)
-        .execute(db)
-        .await;
+        .fetch_optional(db)
+        .await?;
+
+        let (final_class_update, final_course_update) = if let Some((cur_cls, cur_crs)) = existing_student {
+            let update_cls = if cur_cls.as_deref().unwrap_or("").trim().is_empty() { class_val } else { None };
+            let update_crs = if cur_crs.as_deref().unwrap_or("").trim().is_empty() { course_val } else { None };
+            (update_cls, update_crs)
+        } else {
+            (class_val, course_val)
+        };
+
+        if final_class_update.is_some() || final_course_update.is_some() || name_val.is_some() {
+            let _ = sqlx::query(
+                r#"
+                UPDATE students
+                SET class_name  = CASE WHEN $1::text IS NOT NULL THEN $1::text ELSE class_name END,
+                    course_name = CASE WHEN $2::text IS NOT NULL THEN $2::text ELSE course_name END,
+                    name        = CASE WHEN $3::text IS NOT NULL THEN $3::text ELSE name END,
+                    updated_at  = now()
+                WHERE TRIM(student_id) = TRIM($4) OR student_id ILIKE $4
+                "#
+            )
+            .bind(final_class_update.as_deref())
+            .bind(final_course_update.as_deref())
+            .bind(name_val)
+            .bind(&existing.student_id)
+            .execute(db)
+            .await;
+        }
     }
 
     let record = sqlx::query_as::<_, FeeRecord>(
