@@ -4,12 +4,15 @@
 use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
+use crate::config::Config;
 use crate::errors::AppError;
 use crate::utils::password::hash_password;
 use super::models::{
     AdminUserItem, AuditLogItem, CreateAuditLogPayload, CreateStudentPayload,
     CreateStudentResponse, GetAuditLogsQuery, GetStudentsQuery, Student,
-    StudentWithCount, UpdateStudentPayload,
+    StudentCredentialRecord, StudentCredentialsActionPayload,
+    StudentCredentialsActionResult, StudentWithCount, SystemSettings,
+    UpdateStudentPayload, UpdateSystemSettingsPayload,
 };
 use super::repository;
 
@@ -41,6 +44,7 @@ pub async fn get_student(pool: &PgPool, id: Uuid) -> Result<Student, AppError> {
 
 pub async fn create_student(
     pool: &PgPool,
+    config: &Config,
     payload: CreateStudentPayload,
 ) -> Result<CreateStudentResponse, AppError> {
     payload.validate()?;
@@ -89,7 +93,17 @@ pub async fn create_student(
             let raw_password = format!("{}{}", initials, dob_part);
             if let Ok(password_hash) = hash_password(&raw_password) {
                 let _ = repository::upsert_user_account(pool, &student.name, email, &password_hash).await;
-                default_password = Some(raw_password);
+                default_password = Some(raw_password.clone());
+
+                crate::modules::email::service::trigger_student_welcome_email(
+                    pool,
+                    config,
+                    &student.name,
+                    &student.student_id,
+                    email,
+                    &raw_password,
+                    student.class_name.as_deref().unwrap_or("—"),
+                ).await;
             }
         }
     }
@@ -270,6 +284,7 @@ pub async fn delete_student(pool: &PgPool, id: Uuid) -> Result<Student, AppError
 
 pub async fn import_students(
     pool: &PgPool,
+    config: &Config,
     students: Vec<CreateStudentPayload>,
 ) -> Result<Vec<Student>, AppError> {
     let mut results = Vec::new();
@@ -285,6 +300,11 @@ pub async fn import_students(
         let admission_date = s.admission_date.as_deref().and_then(|d| {
             NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()
         });
+
+        let is_new = repository::find_student_by_student_id(pool, &s.student_id)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .is_none();
 
         let student = repository::upsert_student_import(pool, &s, dob, admission_date)
             .await
@@ -308,6 +328,19 @@ pub async fn import_students(
                     let raw_password = format!("{}{}", initials, dob_part);
                     if let Ok(password_hash) = hash_password(&raw_password) {
                         let _ = repository::upsert_user_account(pool, &student.name, email, &password_hash).await;
+
+                        // Send welcome email ONLY on fresh registration, NEVER on updates
+                        if is_new {
+                            crate::modules::email::service::trigger_student_welcome_email(
+                                pool,
+                                config,
+                                &student.name,
+                                &student.student_id,
+                                email,
+                                &raw_password,
+                                student.class_name.as_deref().unwrap_or("—"),
+                            ).await;
+                        }
                     }
                 }
             }
@@ -402,3 +435,204 @@ pub async fn record_audit_log(
     )
     .await
 }
+
+// ─── System Settings Services ────────────────────────────────────────────────
+
+pub async fn get_system_settings(pool: &PgPool) -> Result<SystemSettings, AppError> {
+    repository::find_system_settings(pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to load system settings: {}", e)))
+}
+
+pub async fn update_system_settings(
+    pool: &PgPool,
+    payload: UpdateSystemSettingsPayload,
+) -> Result<SystemSettings, AppError> {
+    let settings = repository::update_system_settings(pool, &payload)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to update system settings: {}", e)))?;
+
+    crate::utils::activity::log_audit(
+        pool,
+        "Admin",
+        "Admin",
+        "SETTINGS_UPDATED",
+        "System",
+        "Updated global system and notification service toggles",
+    )
+    .await?;
+
+    Ok(settings)
+}
+
+// ─── Student Credentials & Email Dispatch Services ────────────────────────────
+
+fn generate_student_default_password(name: &str, dob: Option<NaiveDate>) -> String {
+    let first_name: String = name
+        .trim()
+        .split_whitespace()
+        .next()
+        .unwrap_or("XX")
+        .chars()
+        .filter(|c| c.is_alphabetic())
+        .collect();
+    let initials = format!("{:X>2}", &first_name.to_uppercase()[..first_name.len().min(2)]);
+    if let Some(d) = dob {
+        let dob_part = format!("{}{}{}", d.format("%d"), d.format("%m"), d.format("%Y"));
+        format!("{}{}", initials, dob_part)
+    } else {
+        format!("{}123456", initials)
+    }
+}
+
+pub async fn send_students_credentials(
+    pool: &PgPool,
+    config: &Config,
+    payload: StudentCredentialsActionPayload,
+) -> Result<StudentCredentialsActionResult, AppError> {
+    if payload.student_ids.is_empty() {
+        return Err(AppError::BadRequest("No student IDs provided".to_string()));
+    }
+
+    let students = repository::find_students_for_credentials(pool, &payload.student_ids)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to retrieve students: {}", e)))?;
+
+    let total = payload.student_ids.len();
+    let mut success_count = 0;
+    let mut failure_count = 0;
+    let mut messages = Vec::new();
+
+    for id in &payload.student_ids {
+        if let Some(student) = students.iter().find(|s| &s.student_id == id) {
+            match &student.email {
+                Some(email) if !email.trim().is_empty() && email.contains('@') => {
+                    let password = generate_student_default_password(&student.name, student.dob);
+                    match crate::modules::email::service::trigger_student_credentials_manual_email(
+                        pool,
+                        config,
+                        &student.name,
+                        &student.student_id,
+                        email,
+                        &password,
+                        student.class_name.as_deref().unwrap_or("—"),
+                        false,
+                    ).await {
+                        Ok(_) => {
+                            success_count += 1;
+                        }
+                        Err(err) => {
+                            failure_count += 1;
+                            messages.push(format!("{}: {}", student.student_id, err));
+                        }
+                    }
+                }
+                _ => {
+                    failure_count += 1;
+                    messages.push(format!("{}: No valid email address registered", student.student_id));
+                }
+            }
+        } else {
+            failure_count += 1;
+            messages.push(format!("{}: Student record not found", id));
+        }
+    }
+
+    crate::utils::activity::log_audit(
+        pool,
+        "Admin",
+        "Admin",
+        "CREDENTIALS_EMAIL_DISPATCHED",
+        "Students",
+        &format!("Dispatched login credentials email to {} students ({} failed)", success_count, failure_count),
+    ).await?;
+
+    Ok(StudentCredentialsActionResult {
+        total,
+        success_count,
+        failure_count,
+        messages,
+    })
+}
+
+pub async fn reset_students_passwords(
+    pool: &PgPool,
+    config: &Config,
+    payload: StudentCredentialsActionPayload,
+) -> Result<StudentCredentialsActionResult, AppError> {
+    if payload.student_ids.is_empty() {
+        return Err(AppError::BadRequest("No student IDs provided".to_string()));
+    }
+
+    let students = repository::find_students_for_credentials(pool, &payload.student_ids)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to retrieve students: {}", e)))?;
+
+    let should_send_email = payload.send_email.unwrap_or(true);
+    let total = payload.student_ids.len();
+    let mut success_count = 0;
+    let mut failure_count = 0;
+    let mut messages = Vec::new();
+
+    for id in &payload.student_ids {
+        if let Some(student) = students.iter().find(|s| &s.student_id == id) {
+            match &student.email {
+                Some(email) if !email.trim().is_empty() && email.contains('@') => {
+                    let raw_password = generate_student_default_password(&student.name, student.dob);
+                    match hash_password(&raw_password) {
+                        Ok(hash) => {
+                            if let Err(e) = repository::upsert_user_account(pool, &student.name, email, &hash).await {
+                                failure_count += 1;
+                                messages.push(format!("{}: Failed to update password in database: {}", student.student_id, e));
+                                continue;
+                            }
+
+                            if should_send_email {
+                                let _ = crate::modules::email::service::trigger_student_credentials_manual_email(
+                                    pool,
+                                    config,
+                                    &student.name,
+                                    &student.student_id,
+                                    email,
+                                    &raw_password,
+                                    student.class_name.as_deref().unwrap_or("—"),
+                                    true,
+                                ).await;
+                            }
+
+                            success_count += 1;
+                        }
+                        Err(e) => {
+                            failure_count += 1;
+                            messages.push(format!("{}: Password hashing error: {}", student.student_id, e));
+                        }
+                    }
+                }
+                _ => {
+                    failure_count += 1;
+                    messages.push(format!("{}: No valid email address registered", student.student_id));
+                }
+            }
+        } else {
+            failure_count += 1;
+            messages.push(format!("{}: Student record not found", id));
+        }
+    }
+
+    crate::utils::activity::log_audit(
+        pool,
+        "Admin",
+        "Admin",
+        "STUDENT_PASSWORDS_RESET",
+        "Students",
+        &format!("Reset passwords for {} students ({} failed)", success_count, failure_count),
+    ).await?;
+
+    Ok(StudentCredentialsActionResult {
+        total,
+        success_count,
+        failure_count,
+        messages,
+    })
+}
+

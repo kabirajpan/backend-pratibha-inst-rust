@@ -48,3 +48,18 @@ CREATE TABLE IF NOT EXISTS todos (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 "#;
+
+pub const CREATE_SYSTEM_SETTINGS_TABLE: &str = r#"
+CREATE TABLE IF NOT EXISTS system_settings (
+    id VARCHAR(50) PRIMARY KEY DEFAULT 'global',
+    email_service_enabled BOOLEAN NOT NULL DEFAULT true,
+    student_welcome_email_enabled BOOLEAN NOT NULL DEFAULT true,
+    fee_receipt_email_enabled BOOLEAN NOT NULL DEFAULT true,
+    staff_welcome_email_enabled BOOLEAN NOT NULL DEFAULT true,
+    announcement_email_enabled BOOLEAN NOT NULL DEFAULT true,
+    sms_service_enabled BOOLEAN NOT NULL DEFAULT true,
+    fee_receipt_sms_enabled BOOLEAN NOT NULL DEFAULT true,
+    whatsapp_service_enabled BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"#;

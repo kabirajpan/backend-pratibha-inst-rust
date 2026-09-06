@@ -53,6 +53,7 @@ pub async fn init_schema(pool: &PgPool) -> Result<(), AppError> {
         ("announcements", system::CREATE_ANNOUNCEMENTS_TABLE),
         ("user_notifications", system::CREATE_USER_NOTIFICATIONS_TABLE),
         ("todos", system::CREATE_TODOS_TABLE),
+        ("system_settings", system::CREATE_SYSTEM_SETTINGS_TABLE),
     ];
 
     for (name, ddl) in ddl_statements {
@@ -83,6 +84,17 @@ pub async fn init_schema(pool: &PgPool) -> Result<(), AppError> {
         INSERT INTO library_settings (issue_limit, return_days, fine_per_day)
         SELECT 3, 14, 10.0
         WHERE NOT EXISTS (SELECT 1 FROM library_settings);
+        "#
+    )
+    .execute(pool)
+    .await;
+
+    // Default system settings row if missing
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO system_settings (id)
+        VALUES ('global')
+        ON CONFLICT (id) DO NOTHING;
         "#
     )
     .execute(pool)

@@ -383,6 +383,14 @@ pub async fn list_transport_students(
         }
     }
 
+    if let Some(ref course_name) = q.course_name {
+        if course_name != "All Courses" {
+            sql.push_str(&format!(" AND COALESCE(s.course_name, '') = ${idx}"));
+            binders.push(course_name.clone());
+            idx += 1;
+        }
+    }
+
     if let Some(ref vehicle_no) = q.vehicle_no {
         if vehicle_no != "All Buses" {
             sql.push_str(&format!(" AND ts.vehicle_no = ${idx}"));

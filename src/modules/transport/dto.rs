@@ -272,6 +272,8 @@ pub struct GetTransportStudentsQuery {
     pub status: Option<String>,
     #[serde(rename = "class_name")]
     pub class_name: Option<String>,
+    #[serde(rename = "course_name")]
+    pub course_name: Option<String>,
     #[serde(rename = "vehicle_no")]
     pub vehicle_no: Option<String>,
     pub page: Option<i64>,

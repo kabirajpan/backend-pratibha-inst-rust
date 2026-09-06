@@ -23,6 +23,8 @@ services:
       dockerfile: Dockerfile
     container_name: pratibha_backend_rust
     restart: always
+    env_file:
+      - .env
     network_mode: host
     environment:
       PORT: 5000

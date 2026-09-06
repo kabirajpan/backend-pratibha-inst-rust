@@ -53,7 +53,7 @@ pub async fn create_student(
 ) -> Result<impl IntoResponse, AppError> {
     auth_user.authorize(&[UserRole::Admin])?;
 
-    let resp = service::create_student(&state.db, payload).await?;
+    let resp = service::create_student(&state.db, &state.config, payload).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -102,7 +102,7 @@ pub async fn import_students(
 ) -> Result<impl IntoResponse, AppError> {
     auth_user.authorize(&[UserRole::Admin])?;
 
-    let results = service::import_students(&state.db, payload.students).await?;
+    let results = service::import_students(&state.db, &state.config, payload.students).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -183,3 +183,67 @@ pub async fn create_audit_log(
 
     Ok(Json(json!({ "success": true })))
 }
+
+// ─── SYSTEM SETTINGS ──────────────────────────────────────
+
+pub async fn get_system_settings(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    auth_user.authorize(&[UserRole::Admin])?;
+
+    let settings = service::get_system_settings(&state.db).await?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: settings,
+    }))
+}
+
+pub async fn update_system_settings(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(payload): Json<UpdateSystemSettingsPayload>,
+) -> Result<impl IntoResponse, AppError> {
+    auth_user.authorize(&[UserRole::Admin])?;
+
+    let settings = service::update_system_settings(&state.db, payload).await?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: settings,
+    }))
+}
+
+// ─── STUDENT CREDENTIALS & EMAIL DISPATCH ────────────────
+
+pub async fn send_student_credentials(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(payload): Json<StudentCredentialsActionPayload>,
+) -> Result<impl IntoResponse, AppError> {
+    auth_user.authorize(&[UserRole::Admin])?;
+
+    let result = service::send_students_credentials(&state.db, &state.config, payload).await?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: result,
+    }))
+}
+
+pub async fn reset_student_passwords(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(payload): Json<StudentCredentialsActionPayload>,
+) -> Result<impl IntoResponse, AppError> {
+    auth_user.authorize(&[UserRole::Admin])?;
+
+    let result = service::reset_students_passwords(&state.db, &state.config, payload).await?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: result,
+    }))
+}
+

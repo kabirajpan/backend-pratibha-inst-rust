@@ -118,6 +118,15 @@ pub async fn trigger_fee_receipt_email(
         return; // Don't send receipt for 0 amount initial due balance records
     }
 
+    // Check system settings toggles
+    let settings_query = "SELECT email_service_enabled, fee_receipt_email_enabled FROM system_settings WHERE id = 'global' LIMIT 1";
+    if let Ok(Some((email_enabled, receipt_email_enabled))) = sqlx::query_as::<_, (bool, bool)>(settings_query).fetch_optional(db).await {
+        if !email_enabled || !receipt_email_enabled {
+            info!("Skipping fee receipt email for {}: disabled in system settings", student_id);
+            return;
+        }
+    }
+
     let clean_id = student_id.trim();
     let query_str = "SELECT name, email FROM students WHERE LOWER(TRIM(student_id)) = LOWER(TRIM($1))";
     let row = sqlx::query_as::<_, StudentEmailInfo>(query_str)
@@ -149,6 +158,99 @@ pub async fn trigger_fee_receipt_email(
         }
     }
 }
+
+/// Helper to trigger welcome email with login credentials for newly registered student
+pub async fn trigger_student_welcome_email(
+    db: &sqlx::PgPool,
+    config: &Config,
+    student_name: &str,
+    student_id: &str,
+    email: &str,
+    default_password: &str,
+    class_name: &str,
+) {
+    let email_str = email.trim().to_string();
+    if !email_str.contains('@') {
+        return;
+    }
+
+    // Check system settings toggles
+    let settings_query = "SELECT email_service_enabled, student_welcome_email_enabled FROM system_settings WHERE id = 'global' LIMIT 1";
+    if let Ok(Some((email_enabled, student_email_enabled))) = sqlx::query_as::<_, (bool, bool)>(settings_query).fetch_optional(db).await {
+        if !email_enabled || !student_email_enabled {
+            info!("Skipping student welcome email for {}: disabled in system settings (email_enabled={}, student_email_enabled={})", student_id, email_enabled, student_email_enabled);
+            return;
+        }
+    }
+
+    let portal_url = format!("{}/login", config.client_origin.trim_end_matches('/'));
+    let html = build_student_welcome_html(
+        student_name,
+        student_id,
+        &email_str,
+        default_password,
+        class_name,
+        &portal_url,
+    );
+
+    send_email_async(
+        config.clone(),
+        email_str,
+        format!("Welcome to Pratibha Institute - Student Portal Access ({})", student_id),
+        html,
+    );
+}
+
+/// Helper for admin manual dispatches (send login credentials or password reset email)
+pub async fn trigger_student_credentials_manual_email(
+    db: &sqlx::PgPool,
+    config: &Config,
+    student_name: &str,
+    student_id: &str,
+    email: &str,
+    password: &str,
+    class_name: &str,
+    is_password_reset: bool,
+) -> Result<(), String> {
+    let email_str = email.trim().to_string();
+    if !email_str.contains('@') {
+        return Err("Invalid email format".to_string());
+    }
+
+    // Only respect Master Email Switch (kill-switch) for intentional manual dispatches
+    let settings_query = "SELECT email_service_enabled FROM system_settings WHERE id = 'global' LIMIT 1";
+    if let Ok(Some((email_enabled,))) = sqlx::query_as::<_, (bool,)>(settings_query).fetch_optional(db).await {
+        if !email_enabled {
+            return Err("Master Email Service is currently disabled in System Settings".to_string());
+        }
+    }
+
+    let portal_url = format!("{}/login", config.client_origin.trim_end_matches('/'));
+    let subject = if is_password_reset {
+        format!("Pratibha Institute - Student Password Reset ({})", student_id)
+    } else {
+        format!("Pratibha Institute - Student Portal Access Credentials ({})", student_id)
+    };
+
+    let html = build_student_welcome_html(
+        student_name,
+        student_id,
+        &email_str,
+        password,
+        class_name,
+        &portal_url,
+    );
+
+    send_email_async(
+        config.clone(),
+        email_str,
+        subject,
+        html,
+    );
+
+    Ok(())
+}
+
 
 #[derive(Debug, sqlx::FromRow)]
 struct StudentEmailInfo {

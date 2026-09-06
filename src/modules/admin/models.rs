@@ -85,3 +85,27 @@ pub struct AuditLogItem {
     pub details: String,
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct SystemSettings {
+    pub id: String,
+    pub email_service_enabled: bool,
+    pub student_welcome_email_enabled: bool,
+    pub fee_receipt_email_enabled: bool,
+    pub staff_welcome_email_enabled: bool,
+    pub announcement_email_enabled: bool,
+    pub sms_service_enabled: bool,
+    pub fee_receipt_sms_enabled: bool,
+    pub whatsapp_service_enabled: bool,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct StudentCredentialRecord {
+    pub student_id: String,
+    pub name: String,
+    pub email: Option<String>,
+    pub dob: Option<chrono::NaiveDate>,
+    pub class_name: Option<String>,
+}
+

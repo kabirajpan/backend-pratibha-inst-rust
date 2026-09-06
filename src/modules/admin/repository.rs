@@ -6,7 +6,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use super::models::{
     AdminUserItem, AuditLogItem, CreateStudentPayload, GetAuditLogsQuery,
-    GetStudentsQuery, Student, StudentWithCount, UpdateStudentPayload,
+    GetStudentsQuery, Student, StudentCredentialRecord, StudentWithCount, SystemSettings,
+    UpdateStudentPayload, UpdateSystemSettingsPayload,
 };
 
 // ─── Students Queries ────────────────────────────────────────────────────────
@@ -330,7 +331,7 @@ pub async fn upsert_user_account(
         r#"
         INSERT INTO users (name, email, password_hash, role)
         VALUES ($1, $2, $3, 'student')
-        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash
         "#
     )
     .bind(name)
@@ -432,3 +433,106 @@ pub async fn find_audit_logs(
 
     query.fetch_all(pool).await
 }
+
+// ─── System Settings Queries ─────────────────────────────────────────────────
+
+pub async fn find_system_settings(pool: &PgPool) -> Result<SystemSettings, sqlx::Error> {
+    sqlx::query_as::<_, SystemSettings>(
+        r#"
+        SELECT id, email_service_enabled, student_welcome_email_enabled,
+               fee_receipt_email_enabled, staff_welcome_email_enabled,
+               announcement_email_enabled, sms_service_enabled,
+               fee_receipt_sms_enabled, whatsapp_service_enabled, updated_at
+        FROM system_settings
+        WHERE id = 'global'
+        LIMIT 1
+        "#
+    )
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn update_system_settings(
+    pool: &PgPool,
+    payload: &UpdateSystemSettingsPayload,
+) -> Result<SystemSettings, sqlx::Error> {
+    let current = match find_system_settings(pool).await {
+        Ok(s) => s,
+        Err(_) => SystemSettings {
+            id: "global".to_string(),
+            email_service_enabled: true,
+            student_welcome_email_enabled: true,
+            fee_receipt_email_enabled: true,
+            staff_welcome_email_enabled: true,
+            announcement_email_enabled: true,
+            sms_service_enabled: true,
+            fee_receipt_sms_enabled: true,
+            whatsapp_service_enabled: true,
+            updated_at: chrono::Utc::now(),
+        },
+    };
+
+    let email_enabled = payload.email_service_enabled.unwrap_or(current.email_service_enabled);
+    let student_welcome = payload.student_welcome_email_enabled.unwrap_or(current.student_welcome_email_enabled);
+    let fee_receipt = payload.fee_receipt_email_enabled.unwrap_or(current.fee_receipt_email_enabled);
+    let staff_welcome = payload.staff_welcome_email_enabled.unwrap_or(current.staff_welcome_email_enabled);
+    let announcement = payload.announcement_email_enabled.unwrap_or(current.announcement_email_enabled);
+    let sms_enabled = payload.sms_service_enabled.unwrap_or(current.sms_service_enabled);
+    let fee_receipt_sms = payload.fee_receipt_sms_enabled.unwrap_or(current.fee_receipt_sms_enabled);
+    let whatsapp_enabled = payload.whatsapp_service_enabled.unwrap_or(current.whatsapp_service_enabled);
+
+    sqlx::query_as::<_, SystemSettings>(
+        r#"
+        INSERT INTO system_settings (
+            id, email_service_enabled, student_welcome_email_enabled,
+            fee_receipt_email_enabled, staff_welcome_email_enabled,
+            announcement_email_enabled, sms_service_enabled,
+            fee_receipt_sms_enabled, whatsapp_service_enabled, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+            email_service_enabled = EXCLUDED.email_service_enabled,
+            student_welcome_email_enabled = EXCLUDED.student_welcome_email_enabled,
+            fee_receipt_email_enabled = EXCLUDED.fee_receipt_email_enabled,
+            staff_welcome_email_enabled = EXCLUDED.staff_welcome_email_enabled,
+            announcement_email_enabled = EXCLUDED.announcement_email_enabled,
+            sms_service_enabled = EXCLUDED.sms_service_enabled,
+            fee_receipt_sms_enabled = EXCLUDED.fee_receipt_sms_enabled,
+            whatsapp_service_enabled = EXCLUDED.whatsapp_service_enabled,
+            updated_at = NOW()
+        RETURNING id, email_service_enabled, student_welcome_email_enabled,
+                  fee_receipt_email_enabled, staff_welcome_email_enabled,
+                  announcement_email_enabled, sms_service_enabled,
+                  fee_receipt_sms_enabled, whatsapp_service_enabled, updated_at
+        "#
+    )
+    .bind("global")
+    .bind(email_enabled)
+    .bind(student_welcome)
+    .bind(fee_receipt)
+    .bind(staff_welcome)
+    .bind(announcement)
+    .bind(sms_enabled)
+    .bind(fee_receipt_sms)
+    .bind(whatsapp_enabled)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn find_students_for_credentials(
+    pool: &PgPool,
+    student_ids: &[String],
+) -> Result<Vec<StudentCredentialRecord>, sqlx::Error> {
+    sqlx::query_as::<_, StudentCredentialRecord>(
+        r#"
+        SELECT student_id, name, email, dob, class_name
+        FROM students
+        WHERE student_id = ANY($1)
+        ORDER BY student_id ASC
+        "#,
+    )
+    .bind(student_ids)
+    .fetch_all(pool)
+    .await
+}
+

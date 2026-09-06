@@ -168,3 +168,31 @@ pub struct AdminUserItem {
     pub is_active: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateSystemSettingsPayload {
+    pub email_service_enabled: Option<bool>,
+    pub student_welcome_email_enabled: Option<bool>,
+    pub fee_receipt_email_enabled: Option<bool>,
+    pub staff_welcome_email_enabled: Option<bool>,
+    pub announcement_email_enabled: Option<bool>,
+    pub sms_service_enabled: Option<bool>,
+    pub fee_receipt_sms_enabled: Option<bool>,
+    pub whatsapp_service_enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StudentCredentialsActionPayload {
+    pub student_ids: Vec<String>,
+    #[serde(default)]
+    pub send_email: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StudentCredentialsActionResult {
+    pub total: usize,
+    pub success_count: usize,
+    pub failure_count: usize,
+    pub messages: Vec<String>,
+}
+
