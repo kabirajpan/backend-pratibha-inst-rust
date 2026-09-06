@@ -105,9 +105,14 @@ async fn main() {
     }
 }
 
-async fn health_check() -> impl IntoResponse {
+async fn health_check(axum::extract::State(state): axum::extract::State<AppState>) -> impl IntoResponse {
+    let db_status = match db::check_health(&state.db).await {
+        Ok(_) => "connected",
+        Err(_) => "disconnected",
+    };
     Json(serde_json::json!({
         "status": "ok",
+        "database": db_status,
         "message": "Pratibha Backend Running 🚀"
     }))
 }

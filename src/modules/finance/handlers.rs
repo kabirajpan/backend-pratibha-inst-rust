@@ -51,8 +51,8 @@ pub async fn get_fee_records(
                     bi.id,
                     m.student_id,
                     COALESCE(s.name, m.name) AS student_name,
-                    COALESCE(s.class_name, m.class, '—') AS class,
-                    COALESCE(s.course_name, '—') AS course,
+                    COALESCE(s.class_name, m.class, '—') AS class_name,
+                    COALESCE(s.course_name, '—') AS course_name,
                     COALESCE(b.type, 'book') AS resource_category,
                     COALESCE(b.acc_no, b.sl_no, '—') AS accession_no,
                     b.title AS room,
@@ -92,8 +92,8 @@ pub async fn get_fee_records(
                     f.id,
                     f.student_id,
                     COALESCE(s.name, f.student_id) AS student_name,
-                    COALESCE(lat.class, s.class_name, '—') AS class,
-                    COALESCE(lat.course, s.course_name, '—') AS course,
+                    COALESCE(lat.class_name, s.class_name, '—') AS class_name,
+                    COALESCE(lat.course_name, s.course_name, '—') AS course_name,
                     COALESCE(lat.book_type, 'book') AS resource_category,
                     COALESCE(lat.acc_no, lat.sl_no, '—') AS accession_no,
                     f.room,
@@ -115,8 +115,8 @@ pub async fn get_fee_records(
                         b.type AS book_type, 
                         b.acc_no, 
                         b.sl_no,
-                        COALESCE(st.class_name, lm.class) AS class,
-                        st.course_name AS course,
+                        COALESCE(st.class_name, lm.class) AS class_name,
+                        st.course_name AS course_name,
                         GREATEST(0, (COALESCE(i.return_date, i.due_date, CURRENT_DATE) - i.due_date)::int) AS overdue_days
                     FROM book_issues i
                     JOIN books b ON b.id = i.book_id
@@ -136,8 +136,8 @@ pub async fn get_fee_records(
                     bi.id,
                     m.student_id,
                     COALESCE(s.name, m.name) AS student_name,
-                    COALESCE(s.class_name, m.class, '—') AS class,
-                    COALESCE(s.course_name, '—') AS course,
+                    COALESCE(s.class_name, m.class, '—') AS class_name,
+                    COALESCE(s.course_name, '—') AS course_name,
                     COALESCE(b.type, 'book') AS resource_category,
                     COALESCE(b.acc_no, b.sl_no, '—') AS accession_no,
                     b.title AS room,
@@ -181,8 +181,16 @@ pub async fn get_fee_records(
 
         if let Some(ref class_name) = q.class_name {
             if class_name != "All Classes" {
-                sql.push_str(&format!(" AND class = ${idx}"));
+                sql.push_str(&format!(" AND class_name = ${idx}"));
                 binders.push(class_name.clone());
+                idx += 1;
+            }
+        }
+
+        if let Some(ref course_name) = q.course_name {
+            if course_name != "All Courses" && course_name != "All Course Programs" {
+                sql.push_str(&format!(" AND course_name = ${idx}"));
+                binders.push(course_name.clone());
                 idx += 1;
             }
         }
@@ -263,6 +271,14 @@ pub async fn get_fee_records(
         }
     }
 
+    if let Some(ref course_name) = q.course_name {
+        if course_name != "All Courses" && course_name != "All Course Programs" {
+            sql.push_str(&format!(" AND s.course_name = ${idx}"));
+            binders.push(course_name.clone());
+            idx += 1;
+        }
+    }
+
     if let Some(ref from_date) = q.from_date {
         if !from_date.is_empty() {
             let parsed = chrono::NaiveDate::parse_from_str(from_date, "%Y-%m-%d")
@@ -317,8 +333,8 @@ pub async fn get_fee_record(
     // Check if ID is in book_issues (library fines unpaid/legacy)
     let lib_issue = sqlx::query_as::<_, LibraryUnionRecord>(
         r#"
-        SELECT bi.id, m.student_id, m.name AS student_name, s.class_name AS class,
-               s.course_name AS course, COALESCE(b.type, 'book') AS resource_category,
+        SELECT bi.id, m.student_id, m.name AS student_name, s.class_name AS class_name,
+               s.course_name AS course_name, COALESCE(b.type, 'book') AS resource_category,
                COALESCE(b.acc_no, b.sl_no, '—') AS accession_no, b.title AS room,
                0::int AS overdue_days, 0.00::float8 AS amount, bi.fine_amount::float8 AS due_fees,
                '—' AS payment_mode, bi.remarks, NULL::date AS payment_date, NULL::date AS receipt_date,
@@ -343,9 +359,9 @@ pub async fn get_fee_record(
         r#"
         SELECT f.id, f.student_id, f.fee_type, f.room, f.bus_route, f.bus_no, f.receipt_book_no, f.receipt_no, f.receipt_date, f.payment_date,
                f.amount::float8 AS amount, f.utr_no, f.payment_mode, f.due_fees::float8 AS due_fees, f.remarks, f.discount::float8 AS discount, f.created_at,
-               s.name AS student_name, s.class_name AS class, 1::int AS total_count
+               COALESCE(NULLIF(s.name, ''), f.student_id) AS student_name, s.class_name AS class_name, s.course_name AS course_name, 1::int AS total_count
         FROM fee_collections f
-        JOIN students s ON s.student_id = f.student_id
+        LEFT JOIN students s ON s.student_id = f.student_id
         WHERE f.id = $1
         "#
     )
@@ -372,7 +388,11 @@ pub async fn create_fee_record(
 
         // 1. Verify library member/student exists (auto-create baseline student if missing for bulk imports)
         let student_id = &payload.student_id;
-        let default_class = "B.Sc. Nursing 1st Year";
+        let default_class = sqlx::query_scalar::<_, String>("SELECT name FROM classes ORDER BY name ASC LIMIT 1")
+            .fetch_optional(&mut *tx)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_else(|| "CLASS 8".to_string());
         let default_dob = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
         let _ = sqlx::query(
             r#"
@@ -383,11 +403,53 @@ pub async fn create_fee_record(
             "#
         )
         .bind(student_id)
-        .bind(format!("Student {}", student_id))
-        .bind(default_class)
+        .bind(payload.student_name.as_deref().unwrap_or(&format!("Student {}", student_id)))
+        .bind(payload.class_name.as_deref().unwrap_or(&default_class))
         .bind(default_dob)
         .execute(&mut *tx)
         .await;
+
+        if let Some(ref sname) = payload.student_name {
+            if !sname.trim().is_empty() && !sname.starts_with("Student STU-") {
+                let _ = sqlx::query("UPDATE students SET name = COALESCE(NULLIF($2, ''), name) WHERE student_id = $1")
+                    .bind(student_id)
+                    .bind(sname)
+                    .execute(&mut *tx)
+                    .await;
+            }
+        }
+        if let Some(ref cname) = payload.class_name {
+            let clean = cname.trim();
+            if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+                let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                    .bind(clean)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .unwrap_or(None);
+                let valid_class = existing_cls.map(|(n,)| n).unwrap_or_default();
+                let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
+                    .bind(student_id)
+                    .bind(valid_class)
+                    .execute(&mut *tx)
+                    .await;
+            }
+        }
+        if let Some(ref crsname) = payload.course_name {
+            let clean = crsname.trim();
+            if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+                let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                    .bind(clean)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .unwrap_or(None);
+                let valid_course = existing_crs.map(|(n,)| n).unwrap_or_default();
+                let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
+                    .bind(student_id)
+                    .bind(valid_course)
+                    .execute(&mut *tx)
+                    .await;
+            }
+        }
 
         let parsed_receipt_date = chrono::NaiveDate::parse_from_str(&payload.receipt_date, "%Y-%m-%d")
             .map_err(|_| AppError::BadRequest("Invalid receipt date format".to_string()))?;
@@ -929,7 +991,7 @@ pub async fn create_expense(
     payload.validate()?;
 
     let now_str = chrono::Utc::now().naive_utc().date();
-    let parsed_date = payload.date.as_ref()
+    let parsed_date = payload.date.as_deref()
         .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
         .unwrap_or(now_str);
 

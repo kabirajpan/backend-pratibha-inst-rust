@@ -1,11 +1,9 @@
-pub mod handlers;
+// backend-rust/src/modules/courses/mod.rs
 pub mod models;
+pub mod dto;
+pub mod repository;
+pub mod service;
+pub mod handlers;
+pub mod routes;
 
-use axum::{routing::get, Router};
-use crate::AppState;
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/", get(handlers::get_courses).post(handlers::create_course))
-        .route("/:id", axum::routing::put(handlers::edit_course).delete(handlers::remove_course))
-}
+pub use routes::router;

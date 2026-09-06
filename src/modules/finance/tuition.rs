@@ -16,7 +16,11 @@ pub async fn create_record(
         .await?;
 
     if student.is_none() {
-        let default_class = "B.Sc. Nursing 1st Year";
+        let default_class = sqlx::query_scalar::<_, String>("SELECT name FROM classes ORDER BY name ASC LIMIT 1")
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_else(|| "CLASS 8".to_string());
         let default_dob = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
         let _ = sqlx::query(
             r#"
@@ -27,24 +31,33 @@ pub async fn create_record(
             "#
         )
         .bind(&payload.student_id)
-        .bind(format!("Student {}", payload.student_id))
-        .bind(default_class)
+        .bind(payload.student_name.as_deref().unwrap_or(&format!("Student {}", payload.student_id)))
+        .bind(payload.class_name.as_deref().unwrap_or(&default_class))
         .bind(default_dob)
         .execute(db)
         .await;
     }
 
-    let p_name = payload.get_student_name();
-    let p_class = payload.get_class_name();
-    let p_course = payload.get_course_name();
+    let p_name = payload.student_name.as_ref();
+    let p_class = payload.class_name.as_ref();
+    let p_course = payload.course_name.as_ref();
 
     if p_class.is_some() || p_course.is_some() || p_name.is_some() {
-        let name_val = p_name.as_deref().filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
+        let name_val = p_name.map(|s| s.as_str()).filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
 
         let class_val = if let Some(ref c) = p_class {
             let clean = c.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                Some(clean.to_string())
+                let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                    .bind(clean)
+                    .fetch_optional(db)
+                    .await
+                    .unwrap_or(None);
+                if let Some((official_name,)) = existing_cls {
+                    Some(official_name)
+                } else {
+                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad class
+                }
             } else {
                 None
             }
@@ -55,7 +68,16 @@ pub async fn create_record(
         let course_val = if let Some(ref cr) = p_course {
             let clean = cr.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                Some(clean.to_string())
+                let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                    .bind(clean)
+                    .fetch_optional(db)
+                    .await
+                    .unwrap_or(None);
+                if let Some((official_name,)) = existing_crs {
+                    Some(official_name)
+                } else {
+                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad course
+                }
             } else {
                 None
             }
@@ -215,17 +237,26 @@ pub async fn update_record(
             .map_err(|_| AppError::BadRequest("Invalid payment date format".to_string()))?;
     }
 
-    let up_name = payload.get_student_name();
-    let up_class = payload.get_class_name();
-    let up_course = payload.get_course_name();
+    let up_name = payload.student_name.as_ref();
+    let up_class = payload.class_name.as_ref();
+    let up_course = payload.course_name.as_ref();
 
     if up_class.is_some() || up_course.is_some() || up_name.is_some() {
-        let name_val = up_name.as_deref().filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
+        let name_val = up_name.map(|s| s.as_str()).filter(|s| !s.trim().is_empty() && *s != "—" && !s.contains("Select"));
 
         let class_val = if let Some(ref c) = up_class {
             let clean = c.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                Some(clean.to_string())
+                let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                    .bind(clean)
+                    .fetch_optional(db)
+                    .await
+                    .unwrap_or(None);
+                if let Some((official_name,)) = existing_cls {
+                    Some(official_name)
+                } else {
+                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad class
+                }
             } else {
                 None
             }
@@ -236,7 +267,16 @@ pub async fn update_record(
         let course_val = if let Some(ref cr) = up_course {
             let clean = cr.trim();
             if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
-                Some(clean.to_string())
+                let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                    .bind(clean)
+                    .fetch_optional(db)
+                    .await
+                    .unwrap_or(None);
+                if let Some((official_name,)) = existing_crs {
+                    Some(official_name)
+                } else {
+                    Some("".to_string()) // Rule 3: Save blank on typo, DO NOT store bad course
+                }
             } else {
                 None
             }

@@ -1,3 +1,6 @@
+// backend-rust/src/db.rs
+pub mod schema;
+
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use crate::config::Config;
@@ -5,10 +8,11 @@ use crate::errors::AppError;
 
 pub type DbPool = sqlx::PgPool;
 
+/// Initialize and configure the PostgreSQL connection pool
 pub async fn create_pool(config: &Config) -> Result<DbPool, AppError> {
     let pool = PgPoolOptions::new()
-        .max_connections(15)
-        .min_connections(0)
+        .max_connections(25)
+        .min_connections(2)
         .idle_timeout(Duration::from_secs(120))
         .max_lifetime(Duration::from_secs(300))
         .acquire_timeout(Duration::from_secs(30))
@@ -16,23 +20,17 @@ pub async fn create_pool(config: &Config) -> Result<DbPool, AppError> {
         .await
         .map_err(|e| AppError::Internal(format!("Failed to connect to database: {}", e)))?;
 
-    let _ = sqlx::query("ALTER TABLE library_members ADD COLUMN IF NOT EXISTS course TEXT;")
-        .execute(&pool)
-        .await;
-
-    let _ = sqlx::query(
-        r#"
-        UPDATE library_members lm
-        SET 
-            class = COALESCE(NULLIF(lm.class, ''), s.class_name),
-            course = COALESCE(NULLIF(lm.course, ''), s.course_name)
-        FROM students s
-        WHERE LOWER(TRIM(s.student_id)) = LOWER(TRIM(lm.student_id))
-          AND (lm.class IS NULL OR lm.class = '' OR lm.course IS NULL OR lm.course = '');
-        "#
-    )
-    .execute(&pool)
-    .await;
+    // Execute central schema blueprint initialization
+    schema::init_schema(&pool).await?;
 
     Ok(pool)
+}
+
+/// Simple health check to verify database responsiveness
+pub async fn check_health(pool: &DbPool) -> Result<(), AppError> {
+    sqlx::query("SELECT 1")
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("Database health check failed: {}", e)))?;
+    Ok(())
 }

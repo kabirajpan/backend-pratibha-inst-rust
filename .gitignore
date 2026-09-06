@@ -2,3 +2,5 @@
 .env
 .env.cloud
 *.env*
+api-test/
+

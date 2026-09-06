@@ -15,7 +15,11 @@ pub async fn create_record(
         .await?;
 
     if student.is_none() {
-        let default_class = "B.Sc. Nursing 1st Year";
+        let default_class = sqlx::query_scalar::<_, String>("SELECT name FROM classes ORDER BY name ASC LIMIT 1")
+            .fetch_optional(db)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_else(|| "CLASS 8".to_string());
         let default_dob = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
         let _ = sqlx::query(
             r#"
@@ -27,7 +31,7 @@ pub async fn create_record(
         )
         .bind(&payload.student_id)
         .bind(payload.student_name.as_deref().unwrap_or(&format!("Student {}", payload.student_id)))
-        .bind(payload.class_name.as_deref().unwrap_or(default_class))
+        .bind(payload.class_name.as_deref().unwrap_or(&default_class))
         .bind(default_dob)
         .execute(db)
         .await;
@@ -45,9 +49,15 @@ pub async fn create_record(
     if let Some(ref cname) = payload.class_name {
         let clean = cname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+            let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                .bind(clean)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
+            let valid_class = existing_cls.map(|(n,)| n).unwrap_or_default();
             let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
                 .bind(&payload.student_id)
-                .bind(clean)
+                .bind(valid_class)
                 .execute(db)
                 .await;
         }
@@ -55,9 +65,15 @@ pub async fn create_record(
     if let Some(ref crsname) = payload.course_name {
         let clean = crsname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+            let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                .bind(clean)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
+            let valid_course = existing_crs.map(|(n,)| n).unwrap_or_default();
             let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
                 .bind(&payload.student_id)
-                .bind(clean)
+                .bind(valid_course)
                 .execute(db)
                 .await;
         }
@@ -164,9 +180,15 @@ pub async fn update_record(
     if let Some(ref cname) = payload.class_name {
         let clean = cname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+            let existing_cls: Option<(String,)> = sqlx::query_as("SELECT name FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                .bind(clean)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
+            let valid_class = existing_cls.map(|(n,)| n).unwrap_or_default();
             let _ = sqlx::query("UPDATE students SET class_name = $2 WHERE student_id = $1")
                 .bind(&sid)
-                .bind(clean)
+                .bind(valid_class)
                 .execute(db)
                 .await;
         }
@@ -174,9 +196,15 @@ pub async fn update_record(
     if let Some(ref crsname) = payload.course_name {
         let clean = crsname.trim();
         if !clean.is_empty() && clean != "—" && !clean.to_lowercase().contains("select") {
+            let existing_crs: Option<(String,)> = sqlx::query_as("SELECT name FROM courses WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1")
+                .bind(clean)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
+            let valid_course = existing_crs.map(|(n,)| n).unwrap_or_default();
             let _ = sqlx::query("UPDATE students SET course_name = $2 WHERE student_id = $1")
                 .bind(&sid)
-                .bind(clean)
+                .bind(valid_course)
                 .execute(db)
                 .await;
         }

@@ -1,19 +1,9 @@
-pub mod handlers;
+// backend-rust/src/modules/auth/mod.rs
 pub mod models;
+pub mod dto;
+pub mod repository;
+pub mod service;
+pub mod handlers;
+pub mod routes;
 
-use axum::{
-    routing::{get, post},
-    Router,
-};
-use crate::AppState;
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/register", post(handlers::register))
-        .route("/login", post(handlers::login))
-        .route("/refresh", post(handlers::refresh))
-        .route("/logout", post(handlers::logout))
-        .route("/me", get(handlers::me))
-        .route("/staff", get(handlers::get_staff))
-        .route("/change-password", post(handlers::change_password))
-}
+pub use routes::router;

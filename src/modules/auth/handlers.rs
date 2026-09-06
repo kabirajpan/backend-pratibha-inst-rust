@@ -1,3 +1,6 @@
+// backend-rust/src/modules/auth/handlers.rs
+//! Auth HTTP Presentation Layer (Axum Handlers)
+
 use axum::{
     extract::State,
     http::StatusCode,
@@ -8,86 +11,23 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::AuthUser;
-use crate::utils::jwt::{sign_jwt, verify_jwt};
-use crate::utils::password::{hash_password, verify_password};
 use super::models::{
     ApiMessageResponse, ApiResponse, ChangePasswordPayload, LoginPayload,
-    LoginResponseData, RefreshResponseData, RegisterPayload, User, UserResponse, UserRole,
+    RegisterPayload, UserRole,
 };
+use super::service;
 
 pub async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    payload.validate()?;
-
-    // Check if email already registered in users
-    let email_exists = sqlx::query("SELECT id FROM users WHERE email = $1")
-        .bind(&payload.email)
-        .fetch_optional(&state.db)
-        .await?;
-
-    if email_exists.is_some() {
-        return Err(AppError::Conflict("Email already registered".to_string()));
-    }
-
-    let role = payload.role.clone().unwrap_or(UserRole::Student);
-
-    if role == UserRole::Student {
-        let student_profile = sqlx::query("SELECT student_id FROM students WHERE email = $1")
-            .bind(&payload.email)
-            .fetch_optional(&state.db)
-            .await?;
-
-        if student_profile.is_none() {
-            return Err(AppError::Forbidden(
-                "Your email is not pre-registered in the student directory. Please contact the administrator.".to_string(),
-            ));
-        }
-    }
-
-    let password_hash = hash_password(&payload.password)?;
-
-    let user = sqlx::query_as::<_, User>(
-        r#"
-        INSERT INTO users (name, email, password_hash, role, sub_role)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, name, email, password_hash, role, sub_role, is_active, created_at, updated_at
-        "#
-    )
-    .bind(&payload.name)
-    .bind(&payload.email)
-    .bind(&password_hash)
-    .bind(&role)
-    .bind(&payload.sub_role)
-    .fetch_one(&state.db)
-    .await?;
-
-    if role != UserRole::Student {
-        let role_title = payload.sub_role.as_ref().map(|sr| format!("{:?}", sr)).unwrap_or_else(|| format!("{:?}", role));
-        let portal_url = format!("{}/login", state.config.client_origin.trim_end_matches('/'));
-        let html = crate::modules::email::service::build_staff_welcome_html(
-            &payload.name,
-            &role_title,
-            &payload.email,
-            &payload.password,
-            &portal_url
-        );
-        crate::modules::email::service::send_email_async(
-            state.config.clone(),
-            payload.email.clone(),
-            format!("Staff Onboarding - Pratibha ERP ({})", role_title),
-            html
-        );
-    }
-
-    let response_data = UserResponse::from(user);
+    let user_resp = service::register_user(&state.db, &state.config, payload).await?;
 
     Ok((
         StatusCode::CREATED,
         Json(ApiResponse {
             success: true,
-            data: response_data,
+            data: user_resp,
         }),
     ))
 }
@@ -97,38 +37,7 @@ pub async fn login(
     jar: CookieJar,
     Json(payload): Json<LoginPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    payload.validate()?;
-
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
-        .bind(&payload.email)
-        .fetch_optional(&state.db)
-        .await?;
-
-    let user = match user {
-        Some(u) if u.is_active => u,
-        _ => return Err(AppError::Unauthorized("Invalid email or password".to_string())),
-    };
-
-    let is_match = verify_password(&payload.password, &user.password_hash)?;
-    if !is_match {
-        return Err(AppError::Unauthorized("Invalid email or password".to_string()));
-    }
-
-    let access_token = sign_jwt(
-        user.id,
-        user.role.clone(),
-        user.sub_role.clone(),
-        &state.config.jwt_access_secret,
-        &state.config.jwt_access_expiry,
-    )?;
-
-    let refresh_token = sign_jwt(
-        user.id,
-        user.role.clone(),
-        user.sub_role.clone(),
-        &state.config.jwt_refresh_secret,
-        &state.config.jwt_refresh_expiry,
-    )?;
+    let (login_data, refresh_token) = service::authenticate(&state.db, &state.config, payload).await?;
 
     let cookie = Cookie::build(("refreshToken", refresh_token))
         .path("/api/auth")
@@ -139,12 +48,6 @@ pub async fn login(
         .build();
 
     let jar = jar.add(cookie);
-
-    let user_resp = UserResponse::from(user);
-    let login_data = LoginResponseData {
-        access_token,
-        user: user_resp,
-    };
 
     Ok((
         jar,
@@ -164,18 +67,7 @@ pub async fn refresh(
         .map(|c| c.value())
         .ok_or_else(|| AppError::Unauthorized("No refresh token provided".to_string()))?;
 
-    let claims = verify_jwt(token, &state.config.jwt_refresh_secret)
-        .map_err(|_| AppError::Unauthorized("Invalid or expired refresh token".to_string()))?;
-
-    let access_token = sign_jwt(
-        claims.id,
-        claims.role,
-        claims.sub_role,
-        &state.config.jwt_access_secret,
-        &state.config.jwt_access_expiry,
-    )?;
-
-    let refresh_data = RefreshResponseData { access_token };
+    let refresh_data = service::refresh_access_token(&state.config, token).await?;
 
     Ok(Json(ApiResponse {
         success: true,
@@ -207,15 +99,7 @@ pub async fn me(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let user = sqlx::query_as::<_, User>(
-        "SELECT id, name, email, password_hash, role, sub_role, is_active, created_at, updated_at FROM users WHERE id = $1"
-    )
-    .bind(auth_user.id)
-    .fetch_optional(&state.db)
-    .await?;
-
-    let user = user.ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
-    let user_resp = UserResponse::from(user);
+    let user_resp = service::get_current_user(&state.db, auth_user.id).await?;
 
     Ok(Json(ApiResponse {
         success: true,
@@ -229,13 +113,7 @@ pub async fn get_staff(
 ) -> Result<impl IntoResponse, AppError> {
     auth_user.authorize(&[UserRole::Admin])?;
 
-    let staff = sqlx::query_as::<_, User>(
-        "SELECT id, name, email, password_hash, role, sub_role, is_active, created_at, updated_at FROM users WHERE role = 'staff' ORDER BY name ASC"
-    )
-    .fetch_all(&state.db)
-    .await?;
-
-    let staff_resp: Vec<UserResponse> = staff.into_iter().map(UserResponse::from).collect();
+    let staff_resp = service::get_staff_members(&state.db).await?;
 
     Ok(Json(ApiResponse {
         success: true,
@@ -248,29 +126,7 @@ pub async fn change_password(
     auth_user: AuthUser,
     Json(payload): Json<ChangePasswordPayload>,
 ) -> Result<impl IntoResponse, AppError> {
-    payload.validate()?;
-
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-        .bind(auth_user.id)
-        .fetch_optional(&state.db)
-        .await?;
-
-    let user = user.ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
-
-    if let Some(ref current_password) = payload.current_password {
-        let is_match = verify_password(current_password, &user.password_hash)?;
-        if !is_match {
-            return Err(AppError::BadRequest("Current password does not match".to_string()));
-        }
-    }
-
-    let hashed_new_password = hash_password(&payload.new_password)?;
-
-    sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
-        .bind(hashed_new_password)
-        .bind(auth_user.id)
-        .execute(&state.db)
-        .await?;
+    service::change_password(&state.db, auth_user.id, payload).await?;
 
     Ok(Json(ApiMessageResponse {
         success: true,

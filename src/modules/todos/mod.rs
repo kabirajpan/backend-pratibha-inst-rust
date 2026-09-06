@@ -1,15 +1,9 @@
-pub mod handlers;
+// backend-rust/src/modules/todos/mod.rs
 pub mod models;
+pub mod dto;
+pub mod repository;
+pub mod service;
+pub mod handlers;
+pub mod routes;
 
-use axum::{
-    routing::{get, patch, post},
-    Router,
-};
-use crate::AppState;
-
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/:module", get(handlers::get_todos).post(handlers::create_todo))
-        .route("/:module/clear-completed", post(handlers::clear_completed_todos))
-        .route("/:module/:id", patch(handlers::edit_todo).delete(handlers::remove_todo))
-}
+pub use routes::router;

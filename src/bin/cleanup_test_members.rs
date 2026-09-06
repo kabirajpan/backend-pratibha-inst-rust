@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Clearing all library members from database...");
 
-    let res = sqlx::query("TRUNCATE TABLE library_members CASCADE;")
+    let _res = sqlx::query("TRUNCATE TABLE library_members CASCADE;")
         .execute(&pool)
         .await?;
 
