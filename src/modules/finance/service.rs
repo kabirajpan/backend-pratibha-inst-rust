@@ -106,7 +106,8 @@ pub async fn list_expenses(
         }
     }
 
-    if let Some(ref start_date) = q.start_date {
+    let start_d = q.start_date.as_ref().or(q.from_date.as_ref());
+    if let Some(start_date) = start_d {
         if let Ok(parsed) = NaiveDate::parse_from_str(start_date, "%Y-%m-%d") {
             sql.push_str(&format!(" AND date >= ${idx}"));
             binders.push(parsed.to_string());
@@ -114,7 +115,8 @@ pub async fn list_expenses(
         }
     }
 
-    if let Some(ref end_date) = q.end_date {
+    let end_d = q.end_date.as_ref().or(q.to_date.as_ref());
+    if let Some(end_date) = end_d {
         if let Ok(parsed) = NaiveDate::parse_from_str(end_date, "%Y-%m-%d") {
             sql.push_str(&format!(" AND date <= ${idx}"));
             binders.push(parsed.to_string());

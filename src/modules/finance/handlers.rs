@@ -944,20 +944,22 @@ pub async fn get_expenses(
         }
     }
 
-    if let Some(ref from_date) = q.from_date {
+    let start_date_opt = q.from_date.as_ref().or(q.start_date.as_ref());
+    if let Some(from_date) = start_date_opt {
         if !from_date.is_empty() {
             let parsed = chrono::NaiveDate::parse_from_str(from_date, "%Y-%m-%d")
-                .map_err(|_| AppError::BadRequest("Invalid fromDate".to_string()))?;
+                .map_err(|_| AppError::BadRequest("Invalid fromDate (must be YYYY-MM-DD)".to_string()))?;
             sql.push_str(&format!(" AND date >= ${idx}::date"));
             binders.push(parsed.to_string());
             idx += 1;
         }
     }
 
-    if let Some(ref to_date) = q.to_date {
+    let end_date_opt = q.to_date.as_ref().or(q.end_date.as_ref());
+    if let Some(to_date) = end_date_opt {
         if !to_date.is_empty() {
             let parsed = chrono::NaiveDate::parse_from_str(to_date, "%Y-%m-%d")
-                .map_err(|_| AppError::BadRequest("Invalid toDate".to_string()))?;
+                .map_err(|_| AppError::BadRequest("Invalid toDate (must be YYYY-MM-DD)".to_string()))?;
             sql.push_str(&format!(" AND date <= ${idx}::date"));
             binders.push(parsed.to_string());
             idx += 1;
@@ -1136,7 +1138,9 @@ pub async fn edit_expense(
     if let Some(voucher_no) = payload.voucher_no { existing.voucher_no = voucher_no; }
 
     if let Some(ref date_str) = payload.date {
-        existing.date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d").unwrap();
+        if let Ok(parsed) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+            existing.date = parsed;
+        }
     }
 
     let record = sqlx::query_as::<_, GeneralExpense>(
