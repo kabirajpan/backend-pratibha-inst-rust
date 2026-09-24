@@ -66,12 +66,27 @@ pub async fn init_schema(pool: &PgPool) -> Result<(), AppError> {
     let sync_patches = [
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS class_name VARCHAR(100);",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS course_name VARCHAR(150);",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS tuition_fee FLOAT8 DEFAULT 0.00;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS tuition_duration INT DEFAULT 1;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS tuition_start_date DATE;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS tuition_end_date DATE;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS transport_fee FLOAT8 DEFAULT 0.00;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS transport_duration INT DEFAULT 1;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS transport_start_date DATE;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS transport_end_date DATE;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS hostel_fee FLOAT8 DEFAULT 0.00;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS hostel_duration INT DEFAULT 1;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS hostel_start_date DATE;",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS hostel_end_date DATE;",
         "ALTER TABLE library_members ADD COLUMN IF NOT EXISTS class_name VARCHAR(100);",
         "ALTER TABLE library_members ADD COLUMN IF NOT EXISTS course_name VARCHAR(150);",
         "ALTER TABLE library_members ADD COLUMN IF NOT EXISTS class VARCHAR(100);",
         "ALTER TABLE library_members ADD COLUMN IF NOT EXISTS course VARCHAR(150);",
         "ALTER TABLE fee_collections ADD COLUMN IF NOT EXISTS discount FLOAT8 NOT NULL DEFAULT 0.00;",
         "ALTER TABLE fee_collections ADD COLUMN IF NOT EXISTS due_fees FLOAT8 NOT NULL DEFAULT 0.00;",
+        "ALTER TABLE fee_collections ADD COLUMN IF NOT EXISTS duration INT DEFAULT 1;",
+        "ALTER TABLE fee_collections ADD COLUMN IF NOT EXISTS start_date DATE;",
+        "ALTER TABLE fee_collections ADD COLUMN IF NOT EXISTS end_date DATE;",
     ];
 
     for patch in sync_patches {

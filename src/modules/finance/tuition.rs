@@ -154,16 +154,27 @@ pub async fn create_record(
     let due_fees = payload.due_fees.unwrap_or(0.0);
     let remarks = payload.remarks.as_deref().unwrap_or("—");
     let discount = payload.discount.unwrap_or(0.0);
+    let duration = payload.duration.unwrap_or(1);
+    let parsed_start_date = payload.start_date.as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+    let parsed_end_date = payload.end_date.as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
 
     let record = sqlx::query_as::<_, FeeRecord>(
         r#"
         INSERT INTO fee_collections (
             student_id, fee_type, room, bus_route, bus_no, 
             receipt_book_no, receipt_no, receipt_date, payment_date, 
-            amount, utr_no, payment_mode, due_fees, remarks, discount
-        ) VALUES ($1, $2, $3, '—', '—', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            amount, utr_no, payment_mode, due_fees, remarks, discount,
+            duration, start_date, end_date
+        ) VALUES ($1, $2, $3, '—', '—', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                  amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                  amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount,
+                  duration, start_date, end_date, created_at
         "#
     )
     .bind(&payload.student_id)
@@ -179,6 +190,9 @@ pub async fn create_record(
     .bind(due_fees)
     .bind(remarks)
     .bind(discount)
+    .bind(duration)
+    .bind(parsed_start_date)
+    .bind(parsed_end_date)
     .fetch_one(db)
     .await?;
 
@@ -203,7 +217,8 @@ pub async fn update_record(
     let existing = sqlx::query_as::<_, FeeRecord>(
         r#"
         SELECT id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-               amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+               amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount,
+               duration, start_date, end_date, created_at
         FROM fee_collections WHERE id = $1
         "#
     )
@@ -247,6 +262,19 @@ pub async fn update_record(
     if let Some(amount) = payload.amount { existing.amount = amount; }
     if let Some(due_fees) = payload.due_fees { existing.due_fees = due_fees; }
     if let Some(discount) = payload.discount { existing.discount = discount; }
+    if let Some(dur) = payload.duration { existing.duration = Some(dur); }
+    if let Some(ref s_date) = payload.start_date {
+        existing.start_date = if s_date.trim().is_empty() { None } else {
+            Some(chrono::NaiveDate::parse_from_str(s_date, "%Y-%m-%d")
+                .map_err(|_| AppError::BadRequest("Invalid start_date format".to_string()))?)
+        };
+    }
+    if let Some(ref e_date) = payload.end_date {
+        existing.end_date = if e_date.trim().is_empty() { None } else {
+            Some(chrono::NaiveDate::parse_from_str(e_date, "%Y-%m-%d")
+                .map_err(|_| AppError::BadRequest("Invalid end_date format".to_string()))?)
+        };
+    }
 
     if let Some(ref r_date) = payload.receipt_date {
         existing.receipt_date = chrono::NaiveDate::parse_from_str(r_date, "%Y-%m-%d")
@@ -347,10 +375,12 @@ pub async fn update_record(
         UPDATE fee_collections
         SET student_id = $1, fee_type = $2, room = $3, bus_route = '—', bus_no = '—', 
             receipt_book_no = $4, receipt_no = $5, receipt_date = $6, payment_date = $7, 
-            amount = $8, utr_no = $9, payment_mode = $10, due_fees = $11, remarks = $12, discount = $13
-        WHERE id = $14
+            amount = $8, utr_no = $9, payment_mode = $10, due_fees = $11, remarks = $12, discount = $13,
+            duration = $14, start_date = $15, end_date = $16
+        WHERE id = $17
         RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                  amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                  amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount,
+                  duration, start_date, end_date, created_at
         "#
     )
     .bind(&existing.student_id)
@@ -366,6 +396,9 @@ pub async fn update_record(
     .bind(existing.due_fees)
     .bind(existing.remarks)
     .bind(existing.discount)
+    .bind(existing.duration)
+    .bind(existing.start_date)
+    .bind(existing.end_date)
     .bind(id)
     .fetch_one(db)
     .await?;
@@ -381,7 +414,8 @@ pub async fn delete_record(
         r#"
         DELETE FROM fee_collections WHERE id = $1
         RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                  amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                  amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount,
+                  duration, start_date, end_date, created_at
         "#
     )
     .bind(id)

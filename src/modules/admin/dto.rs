@@ -43,6 +43,18 @@ pub struct CreateStudentPayload {
     pub signature_url: Option<String>,
     pub hostel_room: Option<String>,
     pub transport_vehicle: Option<String>,
+    pub tuition_fee: Option<f64>,
+    pub tuition_duration: Option<i32>,
+    pub tuition_start_date: Option<String>,
+    pub tuition_end_date: Option<String>,
+    pub transport_fee: Option<f64>,
+    pub transport_duration: Option<i32>,
+    pub transport_start_date: Option<String>,
+    pub transport_end_date: Option<String>,
+    pub hostel_fee: Option<f64>,
+    pub hostel_duration: Option<i32>,
+    pub hostel_start_date: Option<String>,
+    pub hostel_end_date: Option<String>,
 }
 
 impl CreateStudentPayload {
@@ -101,6 +113,18 @@ pub struct UpdateStudentPayload {
     pub signature_url: Option<String>,
     pub hostel_room: Option<String>,
     pub transport_vehicle: Option<String>,
+    pub tuition_fee: Option<f64>,
+    pub tuition_duration: Option<i32>,
+    pub tuition_start_date: Option<String>,
+    pub tuition_end_date: Option<String>,
+    pub transport_fee: Option<f64>,
+    pub transport_duration: Option<i32>,
+    pub transport_start_date: Option<String>,
+    pub transport_end_date: Option<String>,
+    pub hostel_fee: Option<f64>,
+    pub hostel_duration: Option<i32>,
+    pub hostel_start_date: Option<String>,
+    pub hostel_end_date: Option<String>,
 }
 
 impl UpdateStudentPayload {

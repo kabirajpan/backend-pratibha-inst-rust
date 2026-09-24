@@ -244,7 +244,8 @@ pub async fn get_fee_records(
     // Default fee collections query (tuition, hostel, transport)
     let mut sql = r#"
         SELECT f.id, f.student_id, f.fee_type, f.room, f.bus_route, f.bus_no, f.receipt_book_no, f.receipt_no, f.receipt_date, f.payment_date,
-               f.amount::float8 AS amount, f.utr_no, f.payment_mode, f.due_fees::float8 AS due_fees, f.remarks, f.discount::float8 AS discount, f.created_at,
+               f.amount::float8 AS amount, f.utr_no, f.payment_mode, f.due_fees::float8 AS due_fees, f.remarks, f.discount::float8 AS discount,
+               f.duration::int AS duration, f.start_date, f.end_date, f.created_at,
                COALESCE(NULLIF(s.name, ''), f.student_id) AS student_name, s.class_name AS class_name, s.course_name AS course_name,
                COUNT(*) OVER()::int AS total_count
         FROM fee_collections f
@@ -358,7 +359,8 @@ pub async fn get_fee_record(
     let record = sqlx::query_as::<_, FeeRecordWithDetails>(
         r#"
         SELECT f.id, f.student_id, f.fee_type, f.room, f.bus_route, f.bus_no, f.receipt_book_no, f.receipt_no, f.receipt_date, f.payment_date,
-               f.amount::float8 AS amount, f.utr_no, f.payment_mode, f.due_fees::float8 AS due_fees, f.remarks, f.discount::float8 AS discount, f.created_at,
+               f.amount::float8 AS amount, f.utr_no, f.payment_mode, f.due_fees::float8 AS due_fees, f.remarks, f.discount::float8 AS discount,
+               f.duration::int AS duration, f.start_date, f.end_date, f.created_at,
                COALESCE(NULLIF(s.name, ''), f.student_id) AS student_name, s.class_name AS class_name, s.course_name AS course_name, 1::int AS total_count
         FROM fee_collections f
         LEFT JOIN students s ON s.student_id = f.student_id
@@ -515,7 +517,8 @@ pub async fn create_fee_record(
                     discount = 0.00
                 WHERE id = $11
                 RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                          amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                          amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount,
+                          duration, start_date, end_date, created_at
                 "#
             )
             .bind(student_id)
@@ -540,7 +543,8 @@ pub async fn create_fee_record(
                     amount, utr_no, payment_mode, due_fees, remarks, discount
                 ) VALUES ($1, 'library', $2, '—', '—', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0.00) 
                 RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                          amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                          amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount,
+                          duration, start_date, end_date, created_at
                 "#
             )
             .bind(student_id)
@@ -766,7 +770,8 @@ pub async fn edit_fee_record(
                 amount, utr_no, payment_mode, due_fees, remarks, discount
             ) VALUES ($1, 'library', $2, '—', '—', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0.00) 
             RETURNING id, student_id, fee_type, room, bus_route, bus_no, receipt_book_no, receipt_no, receipt_date, payment_date,
-                      amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount, created_at
+                      amount::float8 AS amount, utr_no, payment_mode, due_fees::float8 AS due_fees, remarks, discount::float8 AS discount,
+                      duration, start_date, end_date, created_at
             "#
         )
         .bind(actual_student_id)

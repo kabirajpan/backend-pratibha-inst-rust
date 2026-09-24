@@ -24,12 +24,22 @@ pub async fn find_students(
                s.current_address, s.permanent_address, s.aadhar_no, s.bank_name,
                s.account_no, s.ifsc_code, s.admission_no, s.admission_date, s.session,
                s.course_name, s.year, s.photo_url, s.signature_url, s.created_at, s.updated_at,
+               s.tuition_fee::float8 AS tuition_fee,
+               s.tuition_duration::int AS tuition_duration,
+               s.tuition_start_date,
+               s.tuition_end_date,
                hs.room_no AS hostel_room, 
                hs.bed_no AS hostel_bed, 
-               hs.fee_amount::float8 AS hostel_fee, 
+               COALESCE(s.hostel_fee, hs.fee_amount)::float8 AS hostel_fee,
+               s.hostel_duration::int AS hostel_duration,
+               s.hostel_start_date,
+               s.hostel_end_date,
                ts.vehicle_no AS transport_vehicle, 
                ts.route AS transport_route, 
-               ts.fee_amount::float8 AS transport_fee, 
+               COALESCE(s.transport_fee, ts.fee_amount)::float8 AS transport_fee,
+               s.transport_duration::int AS transport_duration,
+               s.transport_start_date,
+               s.transport_end_date,
                COUNT(*) OVER()::int AS total_count 
         FROM students s
         LEFT JOIN hostel_students hs ON LOWER(TRIM(hs.student_id)) = LOWER(TRIM(s.student_id)) AND hs.status = 'active'
@@ -108,6 +118,12 @@ pub async fn insert_student(
     p: &CreateStudentPayload,
     dob: NaiveDate,
     admission_date: Option<NaiveDate>,
+    tuition_start_date: Option<NaiveDate>,
+    tuition_end_date: Option<NaiveDate>,
+    transport_start_date: Option<NaiveDate>,
+    transport_end_date: Option<NaiveDate>,
+    hostel_start_date: Option<NaiveDate>,
+    hostel_end_date: Option<NaiveDate>,
 ) -> Result<Student, sqlx::Error> {
     let status = p.status.as_deref().unwrap_or("active");
     let year = p.year.as_deref().unwrap_or("1st Year");
@@ -119,14 +135,20 @@ pub async fn insert_student(
             gender, blood_group, father_name, mother_name, parent_phone,
             current_address, permanent_address, aadhar_no, bank_name,
             account_no, ifsc_code, admission_no, admission_date, session,
-            course_name, photo_url, signature_url, year
+            course_name, photo_url, signature_url, year,
+            tuition_fee, tuition_duration, tuition_start_date, tuition_end_date,
+            transport_fee, transport_duration, transport_start_date, transport_end_date,
+            hostel_fee, hostel_duration, hostel_start_date, hostel_end_date
         )
         VALUES (
             $1, $2, $3, $4, $5, $6, $7,
             $8, $9, $10, $11, $12,
             $13, $14, $15, $16,
             $17, $18, $19, $20, $21,
-            $22, $23, $24, $25
+            $22, $23, $24, $25,
+            $26, $27, $28, $29,
+            $30, $31, $32, $33,
+            $34, $35, $36, $37
         )
         RETURNING *
         "#
@@ -156,6 +178,18 @@ pub async fn insert_student(
     .bind(&p.photo_url)
     .bind(&p.signature_url)
     .bind(year)
+    .bind(p.tuition_fee)
+    .bind(p.tuition_duration)
+    .bind(tuition_start_date)
+    .bind(tuition_end_date)
+    .bind(p.transport_fee)
+    .bind(p.transport_duration)
+    .bind(transport_start_date)
+    .bind(transport_end_date)
+    .bind(p.hostel_fee)
+    .bind(p.hostel_duration)
+    .bind(hostel_start_date)
+    .bind(hostel_end_date)
     .fetch_one(pool)
     .await
 }
@@ -166,6 +200,12 @@ pub async fn update_student(
     p: &UpdateStudentPayload,
     dob: Option<NaiveDate>,
     admission_date: Option<NaiveDate>,
+    tuition_start_date: Option<NaiveDate>,
+    tuition_end_date: Option<NaiveDate>,
+    transport_start_date: Option<NaiveDate>,
+    transport_end_date: Option<NaiveDate>,
+    hostel_start_date: Option<NaiveDate>,
+    hostel_end_date: Option<NaiveDate>,
     existing: &Student,
 ) -> Result<Option<Student>, sqlx::Error> {
     sqlx::query_as::<_, Student>(
@@ -196,8 +236,20 @@ pub async fn update_student(
             photo_url = COALESCE($23, photo_url),
             signature_url = COALESCE($24, signature_url),
             year = COALESCE($25, year),
+            tuition_fee = COALESCE($26, tuition_fee),
+            tuition_duration = COALESCE($27, tuition_duration),
+            tuition_start_date = COALESCE($28, tuition_start_date),
+            tuition_end_date = COALESCE($29, tuition_end_date),
+            transport_fee = COALESCE($30, transport_fee),
+            transport_duration = COALESCE($31, transport_duration),
+            transport_start_date = COALESCE($32, transport_start_date),
+            transport_end_date = COALESCE($33, transport_end_date),
+            hostel_fee = COALESCE($34, hostel_fee),
+            hostel_duration = COALESCE($35, hostel_duration),
+            hostel_start_date = COALESCE($36, hostel_start_date),
+            hostel_end_date = COALESCE($37, hostel_end_date),
             updated_at = NOW()
-        WHERE id = $26
+        WHERE id = $38
         RETURNING *
         "#
     )
@@ -226,6 +278,18 @@ pub async fn update_student(
     .bind(&p.photo_url)
     .bind(&p.signature_url)
     .bind(p.year.as_deref().or(existing.year.as_deref()))
+    .bind(p.tuition_fee)
+    .bind(p.tuition_duration)
+    .bind(tuition_start_date)
+    .bind(tuition_end_date)
+    .bind(p.transport_fee)
+    .bind(p.transport_duration)
+    .bind(transport_start_date)
+    .bind(transport_end_date)
+    .bind(p.hostel_fee)
+    .bind(p.hostel_duration)
+    .bind(hostel_start_date)
+    .bind(hostel_end_date)
     .bind(id)
     .fetch_optional(pool)
     .await

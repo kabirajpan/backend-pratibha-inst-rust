@@ -22,6 +22,9 @@ pub struct FeeRecord {
     pub due_fees: f64,
     pub remarks: Option<String>,
     pub discount: f64,
+    pub duration: Option<i32>,
+    pub start_date: Option<chrono::NaiveDate>,
+    pub end_date: Option<chrono::NaiveDate>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -43,6 +46,9 @@ pub struct FeeRecordWithDetails {
     pub due_fees: f64,
     pub remarks: Option<String>,
     pub discount: f64,
+    pub duration: Option<i32>,
+    pub start_date: Option<chrono::NaiveDate>,
+    pub end_date: Option<chrono::NaiveDate>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub student_name: String,
     pub class_name: Option<String>,

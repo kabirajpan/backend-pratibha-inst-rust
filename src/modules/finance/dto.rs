@@ -21,6 +21,9 @@ pub struct AddFeeRecordPayload {
     pub due_fees: Option<f64>,
     pub remarks: Option<String>,
     pub discount: Option<f64>,
+    pub duration: Option<i32>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
 }
 
 impl AddFeeRecordPayload {
@@ -35,6 +38,18 @@ impl AddFeeRecordPayload {
             .map_err(|_| crate::errors::AppError::BadRequest("receipt_date must be in YYYY-MM-DD format".to_string()))?;
         chrono::NaiveDate::parse_from_str(&self.payment_date, "%Y-%m-%d")
             .map_err(|_| crate::errors::AppError::BadRequest("payment_date must be in YYYY-MM-DD format".to_string()))?;
+        if let Some(ref s_date) = self.start_date {
+            if !s_date.trim().is_empty() {
+                chrono::NaiveDate::parse_from_str(s_date, "%Y-%m-%d")
+                    .map_err(|_| crate::errors::AppError::BadRequest("start_date must be in YYYY-MM-DD format".to_string()))?;
+            }
+        }
+        if let Some(ref e_date) = self.end_date {
+            if !e_date.trim().is_empty() {
+                chrono::NaiveDate::parse_from_str(e_date, "%Y-%m-%d")
+                    .map_err(|_| crate::errors::AppError::BadRequest("end_date must be in YYYY-MM-DD format".to_string()))?;
+            }
+        }
         if self.amount < 0.0 {
             return Err(crate::errors::AppError::BadRequest("amount must be positive or zero".to_string()));
         }
@@ -78,6 +93,9 @@ pub struct UpdateFeeRecordPayload {
     pub due_fees: Option<f64>,
     pub remarks: Option<String>,
     pub discount: Option<f64>,
+    pub duration: Option<i32>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
 }
 
 impl UpdateFeeRecordPayload {
@@ -104,6 +122,18 @@ impl UpdateFeeRecordPayload {
         if let Some(ref p_date) = self.payment_date {
             chrono::NaiveDate::parse_from_str(p_date, "%Y-%m-%d")
                 .map_err(|_| crate::errors::AppError::BadRequest("payment_date must be in YYYY-MM-DD format".to_string()))?;
+        }
+        if let Some(ref s_date) = self.start_date {
+            if !s_date.trim().is_empty() {
+                chrono::NaiveDate::parse_from_str(s_date, "%Y-%m-%d")
+                    .map_err(|_| crate::errors::AppError::BadRequest("start_date must be in YYYY-MM-DD format".to_string()))?;
+            }
+        }
+        if let Some(ref e_date) = self.end_date {
+            if !e_date.trim().is_empty() {
+                chrono::NaiveDate::parse_from_str(e_date, "%Y-%m-%d")
+                    .map_err(|_| crate::errors::AppError::BadRequest("end_date must be in YYYY-MM-DD format".to_string()))?;
+            }
         }
         if let Some(amount) = self.amount {
             if amount < 0.0 {

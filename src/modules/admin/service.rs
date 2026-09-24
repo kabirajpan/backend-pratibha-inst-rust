@@ -42,6 +42,13 @@ pub async fn get_student(pool: &PgPool, id: Uuid) -> Result<Student, AppError> {
         .ok_or_else(|| AppError::NotFound("Student not found".to_string()))
 }
 
+fn parse_opt_date(opt: &Option<String>) -> Option<NaiveDate> {
+    opt.as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+}
+
 pub async fn create_student(
     pool: &PgPool,
     config: &Config,
@@ -71,9 +78,27 @@ pub async fn create_student(
         _ => None,
     };
 
-    let student = repository::insert_student(pool, &payload, dob, admission_date)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to create student: {}", e)))?;
+    let tuition_start = parse_opt_date(&payload.tuition_start_date);
+    let tuition_end = parse_opt_date(&payload.tuition_end_date);
+    let transport_start = parse_opt_date(&payload.transport_start_date);
+    let transport_end = parse_opt_date(&payload.transport_end_date);
+    let hostel_start = parse_opt_date(&payload.hostel_start_date);
+    let hostel_end = parse_opt_date(&payload.hostel_end_date);
+
+    let student = repository::insert_student(
+        pool,
+        &payload,
+        dob,
+        admission_date,
+        tuition_start,
+        tuition_end,
+        transport_start,
+        transport_end,
+        hostel_start,
+        hostel_end,
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to create student: {}", e)))?;
 
     // Auto-create user account if email is provided
     let mut default_password = None;
@@ -189,10 +214,30 @@ pub async fn update_student(
         _ => None,
     };
 
-    let updated = repository::update_student(pool, id, &payload, dob, admission_date, &existing)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to update student: {}", e)))?
-        .ok_or_else(|| AppError::NotFound("Student not found".to_string()))?;
+    let tuition_start = parse_opt_date(&payload.tuition_start_date);
+    let tuition_end = parse_opt_date(&payload.tuition_end_date);
+    let transport_start = parse_opt_date(&payload.transport_start_date);
+    let transport_end = parse_opt_date(&payload.transport_end_date);
+    let hostel_start = parse_opt_date(&payload.hostel_start_date);
+    let hostel_end = parse_opt_date(&payload.hostel_end_date);
+
+    let updated = repository::update_student(
+        pool,
+        id,
+        &payload,
+        dob,
+        admission_date,
+        tuition_start,
+        tuition_end,
+        transport_start,
+        transport_end,
+        hostel_start,
+        hostel_end,
+        &existing,
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to update student: {}", e)))?
+    .ok_or_else(|| AppError::NotFound("Student not found".to_string()))?;
 
     // Handle hostel room assignment update
     if let Some(ref room_no) = payload.hostel_room {
